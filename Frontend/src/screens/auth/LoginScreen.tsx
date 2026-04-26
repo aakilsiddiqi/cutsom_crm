@@ -23,14 +23,12 @@ export const LoginScreen = () => {
 
     setLoading(true);
     try {
-      // Step 1: Look up the email associated with this username
-      const { data: profile, error: lookupError } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('username', username.trim().toLowerCase())
-        .single();
+      // Step 1: Look up the email associated with this username using a secure RPC
+      // This bypasses RLS which normally blocks 'anon' users from reading the profiles table.
+      const { data: emailData, error: lookupError } = await supabase
+        .rpc('get_user_email_by_username', { p_username: username.trim().toLowerCase() });
 
-      if (lookupError || !profile) {
+      if (lookupError || !emailData) {
         Alert.alert('Login Failed', 'Username not found. Please check your username.');
         setLoading(false);
         return;
@@ -38,7 +36,7 @@ export const LoginScreen = () => {
 
       // Step 2: Sign in with the email + password
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: profile.email,
+        email: emailData,
         password,
       });
 

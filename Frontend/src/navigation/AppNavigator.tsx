@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Alert } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 
 import { supabase } from '../services/supabase';
@@ -10,6 +10,9 @@ import { RootStackParamList, UserRole } from '../types';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { UserDashboardScreen } from '../screens/user/UserDashboardScreen';
+import { CreateJobSheetScreen } from '../screens/user/CreateJobSheetScreen';
+import { JobSheetDetailScreen } from '../screens/user/JobSheetDetailScreen';
+import { EditJobSheetScreen } from '../screens/user/EditJobSheetScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -45,17 +48,28 @@ export const AppNavigator = () => {
 
   const fetchUserRole = async (userId: string) => {
     try {
-      // For now, let's hardcode a simple way or fetch from a 'users' table
-      // In a real app, you would query your users/profiles table:
-      // const { data } = await supabase.from('profiles').select('role').eq('id', userId).single();
-      // setUserRole(data?.role || 'user');
-      
-      // Placeholder logic: Since we don't have a backend schema yet, we'll just set it to 'user'
-      // or we can determine based on email if we wanted.
-      setUserRole('admin'); // For demo purposes, we can toggle this or let the backend dictate it
-    } catch (error) {
+      console.log('Authenticated user ID:', userId);
+      console.log('Fetching profile...');
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, email, full_name, role, phone')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.log('Profile fetch error:', profileError);
+        console.log('Looking for user id:', userId);
+        throw new Error('Profile not found. Contact your admin. Details: ' + profileError.message);
+      }
+
+      setUserRole(profile?.role || 'user');
+    } catch (error: any) {
       console.error('Error fetching role:', error);
-      setUserRole('user');
+      Alert.alert('Error', error.message || 'Failed to fetch profile.');
+      // If we can't get a profile, we shouldn't let them in as 'user' by default to avoid a broken state
+      setUserRole(null);
+      // Optional: supabase.auth.signOut();
     } finally {
       setLoading(false);
     }
@@ -71,18 +85,51 @@ export const AppNavigator = () => {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator>
         {!session ? (
           // Auth Stack
-          <Stack.Screen name="Auth" component={LoginScreen} />
+          <Stack.Screen name="Auth" component={LoginScreen} options={{ headerShown: false }} />
         ) : userRole === 'admin' ? (
           // Admin Stack
-          <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
+          <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
         ) : (
           // User Stack
-          <Stack.Screen name="UserDashboard" component={UserDashboardScreen} />
+          <>
+            <Stack.Screen name="UserDashboard" component={UserDashboardScreen} options={{ headerShown: false }} />
+            <Stack.Screen 
+              name="CreateJobSheet" 
+              component={CreateJobSheetScreen} 
+              options={{ 
+                headerTitle: 'New Job Sheet',
+                headerStyle: { backgroundColor: '#ffcc00' },
+                headerTintColor: '#000',
+                headerBackTitle: ''
+              }} 
+            />
+            <Stack.Screen 
+              name="JobSheetDetail" 
+              component={JobSheetDetailScreen} 
+              options={{ 
+                headerTitle: 'Job Details',
+                headerStyle: { backgroundColor: '#ffcc00' },
+                headerTintColor: '#000',
+                headerBackTitle: ''
+              }} 
+            />
+            <Stack.Screen 
+              name="EditJobSheet" 
+              component={EditJobSheetScreen} 
+              options={{ 
+                headerTitle: 'Edit Job',
+                headerStyle: { backgroundColor: '#ffcc00' },
+                headerTintColor: '#000',
+                headerBackTitle: ''
+              }} 
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 };
+
