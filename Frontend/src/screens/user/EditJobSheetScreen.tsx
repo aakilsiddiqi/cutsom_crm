@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -16,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { supabase, uploadPhoto } from '../../services/supabase';
+import { supabase, uploadPhotoFromUri } from '../../services/supabase';
 import { JobSheet, JobSheetStatus, UserProfile, PartUsed, RootStackParamList } from '../../types';
 
 type EditRouteProp = RouteProp<RootStackParamList, 'EditJobSheet'>;
@@ -54,6 +55,10 @@ export const EditJobSheetScreen = () => {
   const [partsUsed, setPartsUsed] = useState<PartUsed[]>([]);
   const [newPartUsedName, setNewPartUsedName] = useState('');
   const [newPartUsedQty, setNewPartUsedQty] = useState('1');
+  // Edit state for parts used
+  const [editingPartIndex, setEditingPartIndex] = useState<number | null>(null);
+  const [editingPartName, setEditingPartName] = useState('');
+  const [editingPartQty, setEditingPartQty] = useState('1');
 
   // Photos State
   const [existingPhotos, setExistingPhotos] = useState<string[]>([]);
@@ -128,7 +133,40 @@ export const EditJobSheetScreen = () => {
     setPartsUsed(partsUsed.filter((_, i) => i !== index));
   };
 
-  const pickImage = async () => {
+  const handleEditPartUsed = (index: number) => {
+    setEditingPartIndex(index);
+    setEditingPartName(partsUsed[index].name);
+    setEditingPartQty(String(partsUsed[index].quantity));
+  };
+
+  const handleSaveEditPartUsed = () => {
+    if (editingPartIndex === null) return;
+    if (!editingPartName.trim() || parseInt(editingPartQty) < 1) {
+      Alert.alert('Invalid', 'Please enter a valid name and quantity.');
+      return;
+    }
+    const updated = [...partsUsed];
+    updated[editingPartIndex] = { name: editingPartName.trim(), quantity: parseInt(editingPartQty) };
+    setPartsUsed(updated);
+    setEditingPartIndex(null);
+    setEditingPartName('');
+    setEditingPartQty('1');
+  };
+
+  const compressAndAddImage = async (uri: string) => {
+    try {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 800 } }],
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setNewPhotos(prev => [...prev, manipResult.uri]);
+    } catch (error) {
+      console.error('Image compression error:', error);
+    }
+  };
+
+  const openGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Denied', 'Camera roll permissions required.');
@@ -142,16 +180,25 @@ export const EditJobSheetScreen = () => {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        const manipResult = await ImageManipulator.manipulateAsync(
-          result.assets[0].uri,
-          [{ resize: { width: 800 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-        );
-        setNewPhotos([...newPhotos, manipResult.uri]);
-      } catch (error) {
-        console.error('Image compression error:', error);
-      }
+      compressAndAddImage(result.assets[0].uri);
+    }
+  };
+
+  const openCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera permissions required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      compressAndAddImage(result.assets[0].uri);
     }
   };
 
@@ -169,9 +216,7 @@ export const EditJobSheetScreen = () => {
       const uri = newPhotos[i];
       const filePath = `jobs/${Date.now()}_${i}.jpg`;
       try {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const publicUrl = await uploadPhoto(filePath, blob);
+        const publicUrl = await uploadPhotoFromUri(filePath, uri);
         uploadedUrls.push(publicUrl);
       } catch (error) {
         console.error('Upload error:', error);
@@ -307,29 +352,52 @@ export const EditJobSheetScreen = () => {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Entry Date & Time</Text>
-        <View style={styles.row}>
-          <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
-            <Text>{entryDateTime.toLocaleDateString()}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.dateButton} onPress={() => setShowTimePicker(true)}>
-            <Text>{entryDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-          </TouchableOpacity>
-        </View>
-        {showDatePicker && (
-          <DateTimePicker
-            value={entryDateTime}
-            mode="date"
-            display="default"
-            onChange={(_, date) => { setShowDatePicker(false); if(date) setEntryDateTime(date); }}
+        {Platform.OS === 'web' ? (
+          <input
+            type="datetime-local"
+            value={new Date(entryDateTime.getTime() - entryDateTime.getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+            onChange={(e) => {
+              if (e.target.value) {
+                setEntryDateTime(new Date(e.target.value));
+              }
+            }}
+            style={{
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              fontSize: '16px',
+              width: '100%',
+              backgroundColor: '#fff',
+              boxSizing: 'border-box'
+            }}
           />
-        )}
-        {showTimePicker && (
-          <DateTimePicker
-            value={entryDateTime}
-            mode="time"
-            display="default"
-            onChange={(_, date) => { setShowTimePicker(false); if(date) setEntryDateTime(date); }}
-          />
+        ) : (
+          <>
+            <View style={styles.row}>
+              <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+                <Text>{entryDateTime.toLocaleDateString()}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dateButton} onPress={() => setShowTimePicker(true)}>
+                <Text>{entryDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </TouchableOpacity>
+            </View>
+            {showDatePicker && (
+              <DateTimePicker
+                value={entryDateTime}
+                mode="date"
+                display="default"
+                onChange={(_, date) => { setShowDatePicker(false); if(date) setEntryDateTime(date); }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={entryDateTime}
+                mode="time"
+                display="default"
+                onChange={(_, date) => { setShowTimePicker(false); if(date) setEntryDateTime(date); }}
+              />
+            )}
+          </>
         )}
       </View>
 
@@ -410,10 +478,44 @@ export const EditJobSheetScreen = () => {
         <View style={styles.listContainer}>
           {partsUsed.map((part, index) => (
             <View key={index} style={styles.listItem}>
-              <Text style={styles.listText}>{part.name} (Qty: {part.quantity})</Text>
-              <TouchableOpacity onPress={() => handleRemovePartUsed(index)}>
-                <Text style={styles.removeText}>Remove</Text>
-              </TouchableOpacity>
+              {editingPartIndex === index ? (
+                <View style={{ flex: 1 }}>
+                  <View style={styles.row}>
+                    <TextInput
+                      style={[styles.input, { flex: 2, marginBottom: 6 }]}
+                      value={editingPartName}
+                      onChangeText={setEditingPartName}
+                      placeholder="Part name"
+                    />
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginBottom: 6, marginLeft: 8 }]}
+                      value={editingPartQty}
+                      onChangeText={setEditingPartQty}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                  <View style={styles.row}>
+                    <TouchableOpacity style={[styles.addButton, { flex: 1, alignItems: 'center', marginLeft: 0 }]} onPress={handleSaveEditPartUsed}>
+                      <Text style={styles.addButtonText}>✓ Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.addButton, { flex: 1, alignItems: 'center', backgroundColor: '#666' }]} onPress={() => setEditingPartIndex(null)}>
+                      <Text style={styles.addButtonText}>✕ Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.listText}>{part.name} (Qty: {part.quantity})</Text>
+                  <View style={styles.row}>
+                    <TouchableOpacity onPress={() => handleEditPartUsed(index)} style={{ marginRight: 12 }}>
+                      <Text style={styles.editText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleRemovePartUsed(index)}>
+                      <Text style={styles.removeText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
           ))}
         </View>
@@ -422,9 +524,14 @@ export const EditJobSheetScreen = () => {
       {/* Photos */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Photos</Text>
-        <TouchableOpacity style={styles.photoButton} onPress={pickImage}>
-          <Text style={styles.photoButtonText}>+ Add Photo</Text>
-        </TouchableOpacity>
+        <View style={styles.row}>
+          <TouchableOpacity style={[styles.photoButton, { flex: 1, marginRight: 5 }]} onPress={openCamera}>
+            <Text style={styles.photoButtonText}>📷 Camera</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.photoButton, { flex: 1, marginLeft: 5 }]} onPress={openGallery}>
+            <Text style={styles.photoButtonText}>🖼️ Gallery</Text>
+          </TouchableOpacity>
+        </View>
         <ScrollView horizontal style={styles.photosScroll}>
           {existingPhotos.map((url, index) => (
             <View key={`old-${index}`} style={styles.photoWrapper}>
@@ -502,7 +609,8 @@ const styles = StyleSheet.create({
   listItem: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff', padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
   listText: { fontSize: 16 },
   removeText: { color: '#e74c3c', fontWeight: 'bold' },
-  photoButton: { borderWidth: 2, borderColor: '#ddd', borderStyle: 'dashed', borderRadius: 8, padding: 20, alignItems: 'center', marginBottom: 10 },
+  editText: { color: '#007bff', fontWeight: 'bold' },
+  photoButton: { borderWidth: 2, borderColor: '#ddd', borderStyle: 'dashed', borderRadius: 8, padding: 15, alignItems: 'center', marginBottom: 10, backgroundColor: '#fafafa' },
   photoButtonText: { color: '#555', fontWeight: '600' },
   photosScroll: { flexDirection: 'row' },
   photoWrapper: { marginRight: 10, position: 'relative' },

@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import { STORAGE_BUCKETS } from '../types';
 
 const supabaseUrl = 'https://lijzfdwqwyyjfiyqfkpc.supabase.co';
@@ -71,13 +73,19 @@ export const getPhotoUrl = (filePath: string): string => {
 };
 
 /**
- * Upload a single image blob to the machine_photos bucket.
- * Returns the full public URL on success.
+ * Upload a single image using its local URI directly.
+ * Fixes React Native Android issues with Blob fetch.
  */
-export const uploadPhoto = async (filePath: string, blob: Blob): Promise<string> => {
+export const uploadPhotoFromUri = async (filePath: string, fileUri: string): Promise<string> => {
+  const base64Str = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: 'base64',
+  });
+
+  const arrayBuffer = decode(base64Str);
+
   const { error } = await supabase.storage
     .from(STORAGE_BUCKETS.MACHINE_PHOTOS)
-    .upload(filePath, blob, { contentType: 'image/jpeg', upsert: false });
+    .upload(filePath, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
 
   if (error) throw error;
   return getPhotoUrl(filePath);
