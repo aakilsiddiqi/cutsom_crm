@@ -7,29 +7,47 @@ import {
   FlatList, 
   TextInput,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Alert,
+  Platform
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { RootStackParamList, JobSheet, UserProfile } from '../../types';
 import { JobSheetCard } from '../../components/JobSheetCard';
+import { useAuth } from '../../context/AuthContext';
+import { getGreeting, getGreetingEmoji } from '../../utils/greetingUtils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'UserDashboard'>;
 
 export const UserDashboardScreen = () => {
   const navigation = useNavigation<NavigationProp>();
+  const { signOut } = useAuth();
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [jobSheets, setJobSheets] = useState<JobSheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [errorOccurred, setErrorOccurred] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
 
+  const [greeting, setGreeting] = useState(getGreeting());
+  const [greetingEmoji, setGreetingEmoji] = useState(getGreetingEmoji());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGreeting(getGreeting());
+      setGreetingEmoji(getGreetingEmoji());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchDashboardData = async () => {
     try {
+      setErrorOccurred(false);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -56,6 +74,7 @@ export const UserDashboardScreen = () => {
       if (jobs) setJobSheets(jobs as JobSheet[]);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      setErrorOccurred(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -71,6 +90,19 @@ export const UserDashboardScreen = () => {
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to logout?')) {
+        signOut();
+      }
+    } else {
+      Alert.alert('Logout', 'Are you sure you want to logout?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: async () => { await signOut(); } }
+      ]);
+    }
   };
 
   // Formatting Date
@@ -102,8 +134,30 @@ export const UserDashboardScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>Namaste, {userProfile?.full_name || userProfile?.username || 'Technician'}!</Text>
-        <Text style={styles.dateText}>{todayDate}</Text>
+        <View>
+          <Text style={styles.greeting}>{greetingEmoji} {greeting}, {userProfile?.full_name || userProfile?.username || 'Technician'}!</Text>
+          <Text style={styles.dateText}>{todayDate}</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            activeOpacity={0.7} 
+            onPress={() => navigation.navigate('Settings')} 
+            style={styles.headerButton}
+            accessibilityLabel="Settings"
+          >
+            <Text style={styles.headerButtonText}>⚙️</Text>
+            <Text style={styles.headerButtonLabel}>Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            activeOpacity={0.7} 
+            onPress={handleLogout} 
+            style={styles.headerButton}
+            accessibilityLabel="Logout"
+          >
+            <Text style={styles.headerButtonText}>🚪</Text>
+            <Text style={styles.headerButtonLabel}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Summary Cards */}
@@ -150,6 +204,10 @@ export const UserDashboardScreen = () => {
       {/* Job List */}
       {loading && !refreshing ? (
         <ActivityIndicator size="large" color="#FFD700" style={{ marginTop: 50 }} />
+      ) : errorOccurred ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>⚠️ Failed to load data. Pull down to refresh.</Text>
+        </View>
       ) : (
         <FlatList
           data={filteredJobs}
@@ -161,7 +219,7 @@ export const UserDashboardScreen = () => {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>🔧</Text>
-              <Text style={styles.emptyText}>No job sheets yet. Tap + to create your first one.</Text>
+              <Text style={styles.emptyText}>No job sheets found.</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -175,7 +233,8 @@ export const UserDashboardScreen = () => {
 
       {/* FAB */}
       <TouchableOpacity 
-        style={styles.fab} 
+        style={styles.fab}
+        activeOpacity={0.7}
         onPress={() => navigation.navigate('CreateJobSheet')}
       >
         <Text style={styles.fabText}>+</Text>
@@ -191,23 +250,30 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   header: {
-    marginTop: 10,
+    marginTop: 5,
     marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
+  headerActions: { flexDirection: 'row', gap: 12 },
+  headerButton: { alignItems: 'center', minWidth: 45 },
+  headerButtonText: { fontSize: 20, marginBottom: 2 },
+  headerButtonLabel: { color: '#666', fontSize: 10, fontWeight: '600' },
   greeting: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
   },
   dateText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    marginTop: 4,
+    marginTop: 2,
   },
   summaryContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   summaryCard: {
     flex: 1,
@@ -223,14 +289,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   sectionHeader: {
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -241,7 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 16,
+    fontSize: 15,
     marginBottom: 12,
   },
   filterRow: {
@@ -258,7 +324,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#555',
     fontWeight: '500',
   },
@@ -279,6 +345,16 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
+  errorContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   fab: {
     position: 'absolute',
     bottom: 20,
@@ -293,12 +369,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
-    elevation: 5,
+    elevation: 10,
+    zIndex: 999,
   },
   fabText: {
-    fontSize: 30,
-    fontWeight: 'normal',
+    fontSize: 34,
+    fontWeight: 'bold',
     color: '#1a1a2e',
-    lineHeight: 34,
+    lineHeight: 38,
   }
 });

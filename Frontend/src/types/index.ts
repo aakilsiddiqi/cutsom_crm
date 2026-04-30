@@ -61,12 +61,12 @@ export type JobSheet = JobSheetRow & {
 export type JobUpdate = {
   id: string;
   job_sheet_id: string;
-  updated_by?: string; // Kept for backwards compatibility if still in table
-  updated_by_id?: string;
-  updated_by_name?: string;
   update_note: string | null;
-  status_changed_to: JobSheetStatus | null;
+  status_changed_to: string | null;
   created_at: string;
+  updated_by: string;
+  updated_by_name: string | null;
+  updated_by_id: string | null;
 };
 
 // ==========================================
@@ -74,11 +74,23 @@ export type JobUpdate = {
 // ==========================================
 export type RootStackParamList = {
   Auth: undefined;
+  AdminNavigator: undefined;
   AdminDashboard: undefined;
+  AllJobs: undefined;
+  Team: undefined;
+  JobDetailAdminScreen: { jobSheetId: string };
   UserDashboard: undefined;
   CreateJobSheet: undefined;
   JobSheetDetail: { jobSheetId: string };
   EditJobSheet: { jobSheetId: string };
+  Settings: undefined;
+};
+
+export type AdminStackParamList = {
+  AdminTabs: undefined;
+  JobDetailAdminScreen: { jobSheetId: string };
+  Settings: undefined;
+  AddTechnician: undefined;
 };
 
 // ==========================================

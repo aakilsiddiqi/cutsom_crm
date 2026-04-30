@@ -4,8 +4,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { STORAGE_BUCKETS } from '../types';
 
-const supabaseUrl = 'https://lijzfdwqwyyjfiyqfkpc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpanpmZHdxd3l5amZpeXFma3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMTY2MTEsImV4cCI6MjA5Mjc5MjYxMX0.0r9Bp-1fcMOS2a5n6xMi1RQEEVex4S3PtkBIGVk6jNA';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
  * In-memory fallback storage — used when AsyncStorage is unavailable
@@ -57,7 +57,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: getNativeStorage(),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });
 

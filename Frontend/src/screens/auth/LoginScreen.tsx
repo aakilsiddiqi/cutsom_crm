@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,18 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
 } from 'react-native';
 import { supabase } from '../../services/supabase';
+import { useAuth } from '../../context/AuthContext';
 
 export const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { session, profile, loading: authLoading, fetchProfile, signOut } = useAuth();
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
@@ -23,8 +28,6 @@ export const LoginScreen = () => {
 
     setLoading(true);
     try {
-      // Step 1: Look up the email associated with this username using a secure RPC
-      // This bypasses RLS which normally blocks 'anon' users from reading the profiles table.
       const { data: emailData, error: lookupError } = await supabase
         .rpc('get_user_email_by_username', { p_username: username.trim().toLowerCase() });
 
@@ -34,7 +37,6 @@ export const LoginScreen = () => {
         return;
       }
 
-      // Step 2: Sign in with the email + password
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: emailData,
         password,
@@ -51,55 +53,97 @@ export const LoginScreen = () => {
     }
   };
 
+  const handleForgotPassword = () => {
+    Alert.alert("Reset Password", "Please contact your administrator to reset your password.");
+  };
+
+  const handleRetryProfile = async () => {
+    if (session) {
+      await fetchProfile(session.user.id);
+    }
+  };
+
+  // If logged in but profile is missing
+  if (session && !authLoading && !profile) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorCard}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>Profile Not Found</Text>
+          <Text style={styles.errorMsg}>
+            Login successful but profile not found. {"\n"}
+            Please check your internet connection and try again.{"\n"}
+            If the problem persists, contact your administrator.
+          </Text>
+          
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetryProfile}>
+            <Text style={styles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.cancelButton} onPress={() => signOut()}>
+            <Text style={styles.cancelButtonText}>Back to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.badge}>JCB</Text>
-        <Text style={styles.title}>Workshop CRM</Text>
-        <Text style={styles.subtitle}>Sign in to your account</Text>
-      </View>
-
-      {/* Form */}
-      <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your username"
-            placeholderTextColor="#aaa"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <Text style={styles.badge}>JCB</Text>
+          <Text style={styles.title}>Workshop CRM</Text>
+          <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#aaa"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-        </View>
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your username"
+              placeholderTextColor="#aaa"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Log In</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your password"
+              placeholderTextColor="#aaa"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.buttonText}>Log In</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotPassword}>
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -178,5 +222,58 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 16,
     letterSpacing: 0.5,
+  },
+  forgotPassword: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    color: '#ffcc00',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorCard: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 30,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e74c3c',
+  },
+  errorIcon: {
+    fontSize: 40,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  errorMsg: {
+    color: '#ccc',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#ffcc00',
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
