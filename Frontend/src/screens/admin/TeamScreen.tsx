@@ -11,7 +11,8 @@ import {
   Linking,
   Switch,
   Alert,
-  Modal
+  Modal,
+  Platform
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -116,32 +117,38 @@ export const TeamScreen = () => {
   };
 
   const toggleTechStatus = async (techId: string, currentStatus: boolean, name: string) => {
-    Alert.alert(
-      'Confirm Status Change',
-      `Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('profiles')
-                .update({ is_active: !currentStatus })
-                .eq('id', techId);
+    const performUpdate = async () => {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ is_active: !currentStatus })
+          .eq('id', techId);
 
-              if (error) throw error;
-              
-              setTeamStats(prev => prev.map(t => 
-                t.id === techId ? { ...t, is_active: !currentStatus } : t
-              ));
-            } catch (error) {
-              Alert.alert('Error', 'Failed to update status');
-            }
-          }
-        }
-      ]
-    );
+        if (error) throw error;
+        
+        setTeamStats(prev => prev.map(t => 
+          t.id === techId ? { ...t, is_active: !currentStatus } : t
+        ));
+      } catch (error) {
+        Alert.alert('Error', 'Failed to update status');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`);
+      if (confirmed) {
+        performUpdate();
+      }
+    } else {
+      Alert.alert(
+        'Confirm Status Change',
+        `Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes', onPress: performUpdate }
+        ]
+      );
+    }
   };
 
   const handleRemovePress = async (techId: string, name: string) => {
@@ -155,18 +162,25 @@ export const TeamScreen = () => {
       if (error) throw error;
 
       if (!activeJobs || activeJobs.length === 0) {
-        Alert.alert(
-          'Remove Technician',
-          `Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Remove', 
-              style: 'destructive', 
-              onPress: () => deactivateUser(techId, name) 
-            }
-          ]
-        );
+        if (Platform.OS === 'web') {
+          const confirmed = window.confirm(`Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`);
+          if (confirmed) {
+            deactivateUser(techId, name);
+          }
+        } else {
+          Alert.alert(
+            'Remove Technician',
+            `Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Remove', 
+                style: 'destructive', 
+                onPress: () => deactivateUser(techId, name) 
+              }
+            ]
+          );
+        }
       } else {
         const { data: otherTechs } = await supabase
           .from('profiles')

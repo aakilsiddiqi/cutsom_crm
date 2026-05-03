@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Switch,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -170,136 +172,144 @@ export const AddTechnicianScreen = () => {
 
   const strength = getPasswordStrength();
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backButton}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add New Technician</Text>
-          <View style={{ width: 50 }} />
+  const content = (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backButton}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Add New Technician</Text>
+        <View style={{ width: 50 }} />
+      </View>
+
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* Full Name */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Full Name</Text>
+          <TextInput
+            style={[styles.input, errors.fullName && styles.inputError]}
+            placeholder="Enter full name"
+            value={fullName}
+            onChangeText={setFullName}
+          />
+          {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
         </View>
 
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-          {/* Full Name */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Full Name</Text>
-            <TextInput
-              style={[styles.input, errors.fullName && styles.inputError]}
-              placeholder="Enter full name"
-              value={fullName}
-              onChangeText={setFullName}
-            />
-            {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
-          </View>
+        {/* Email */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Email Address</Text>
+          <TextInput
+            style={[styles.input, errors.email && styles.inputError]}
+            placeholder="Enter email address"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={email}
+            onChangeText={setEmail}
+          />
+          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+        </View>
 
-          {/* Email */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={[styles.input, errors.email && styles.inputError]}
-              placeholder="Enter email address"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-            />
-            {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-          </View>
+        {/* Phone */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone Number</Text>
+          <TextInput
+            style={[styles.input, errors.phone && styles.inputError]}
+            placeholder="10-digit phone number"
+            keyboardType="numeric"
+            maxLength={10}
+            value={phone}
+            onChangeText={setPhone}
+          />
+          {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+        </View>
 
-          {/* Phone */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput
-              style={[styles.input, errors.phone && styles.inputError]}
-              placeholder="10-digit phone number"
-              keyboardType="numeric"
-              maxLength={10}
-              value={phone}
-              onChangeText={setPhone}
-            />
-            {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-          </View>
+        {/* Username */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Username</Text>
+          <TextInput
+            style={[styles.input, errors.username && styles.inputError]}
+            placeholder="e.g. ramesh_kumar"
+            autoCapitalize="none"
+            value={username}
+            onChangeText={setUsername}
+          />
+          {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
+        </View>
 
-          {/* Username */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Username</Text>
-            <TextInput
-              style={[styles.input, errors.username && styles.inputError]}
-              placeholder="e.g. ramesh_kumar"
-              autoCapitalize="none"
-              value={username}
-              onChangeText={setUsername}
-            />
-            {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
-          </View>
-
-          {/* Password */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={[styles.input, errors.password && styles.inputError]}
-              placeholder="Minimum 8 characters"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
-            {strength && (
-              <View style={styles.strengthContainer}>
-                <View style={[styles.strengthBar, { backgroundColor: getStrengthColor(), width: strength === 'Weak' ? '33%' : strength === 'Medium' ? '66%' : '100%' }]} />
-                <Text style={[styles.strengthText, { color: getStrengthColor() }]}>{strength}</Text>
-              </View>
-            )}
-            {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-          </View>
-
-          {/* Confirm Password */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Confirm Password</Text>
-            <TextInput
-              style={[styles.input, errors.confirmPassword && styles.inputError]}
-              placeholder="Repeat password"
-              secureTextEntry
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-            />
-            {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
-          </View>
-
-          {/* Active Status */}
-          <View style={[styles.inputGroup, styles.switchGroup]}>
-            <View>
-              <Text style={styles.label}>Active Status</Text>
-              <Text style={styles.helperText}>Inactive technicians cannot login or be assigned jobs.</Text>
+        {/* Password */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={[styles.input, errors.password && styles.inputError]}
+            placeholder="Minimum 8 characters"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+          {strength && (
+            <View style={styles.strengthContainer}>
+              <View style={[styles.strengthBar, { backgroundColor: getStrengthColor(), width: strength === 'Weak' ? '33%' : strength === 'Medium' ? '66%' : '100%' }]} />
+              <Text style={[styles.strengthText, { color: getStrengthColor() }]}>{strength}</Text>
             </View>
-            <Switch
-              value={isActive}
-              onValueChange={setIsActive}
-              trackColor={{ false: '#767577', true: '#FFD700' }}
-              thumbColor={isActive ? '#1a1a2e' : '#f4f3f4'}
-            />
+          )}
+          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+        </View>
+
+        {/* Confirm Password */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={[styles.input, errors.confirmPassword && styles.inputError]}
+            placeholder="Repeat password"
+            secureTextEntry
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+          {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+        </View>
+
+        {/* Active Status */}
+        <View style={[styles.inputGroup, styles.switchGroup]}>
+          <View>
+            <Text style={styles.label}>Active Status</Text>
+            <Text style={styles.helperText}>Inactive technicians cannot login or be assigned jobs.</Text>
           </View>
+          <Switch
+            value={isActive}
+            onValueChange={setIsActive}
+            trackColor={{ false: '#767577', true: '#FFD700' }}
+            thumbColor={isActive ? '#1a1a2e' : '#f4f3f4'}
+          />
+        </View>
 
-          <TouchableOpacity
-            style={[styles.submitButton, loading && styles.disabledButton]}
-            onPress={handleCreateTechnician}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#1a1a2e" />
-            ) : (
-              <Text style={styles.submitButtonText}>Create Technician</Text>
-            )}
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.submitButton, loading && styles.disabledButton]}
+          onPress={handleCreateTechnician}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#1a1a2e" />
+          ) : (
+            <Text style={styles.submitButtonText}>Create Technician</Text>
+          )}
+        </TouchableOpacity>
 
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      {Platform.OS === 'web' ? content : (
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          {content}
+        </TouchableWithoutFeedback>
+      )}
     </SafeAreaView>
   );
 };
