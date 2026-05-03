@@ -14,9 +14,11 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
-import { AdminStackParamList } from '../../types';
+import { AdminStackParamList, JobSheet } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getGreeting, getGreetingEmoji } from '../../utils/greetingUtils';
+import { JobSheetCard } from '../../components/JobSheetCard';
+import { QuickStatusModal } from '../../components/QuickStatusModal';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AdminTabs'>;
 
@@ -53,6 +55,10 @@ export const AdminDashboardScreen = () => {
 
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
+  // Quick Status Modal
+  const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
+  const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
+
   const fetchDashboardData = async () => {
     try {
       setErrorOccurred(false);
@@ -87,7 +93,7 @@ export const AdminDashboardScreen = () => {
         supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso).eq('status', 'On Hold'),
         supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', monthIso),
         supabase.from('job_sheets')
-          .select('*, assigned_profile:profiles!assigned_to(full_name)')
+          .select('*, assignee:profiles!job_sheets_assigned_to_fkey(*)')
           .order('updated_at', { ascending: false })
           .limit(10)
       ]);
@@ -143,6 +149,16 @@ export const AdminDashboardScreen = () => {
         ]
       );
     }
+  };
+
+  const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
+    setRecentActivity((prev) =>
+      prev.map((job) =>
+        job.id === jobSheetId ? { ...job, status: newStatus } : job
+      )
+    );
+    // Refresh metrics without full loading
+    fetchDashboardData();
   };
 
   const getStatusColor = (status: string) => {
@@ -273,31 +289,35 @@ export const AdminDashboardScreen = () => {
               </View>
             ) : (
               recentActivity.map((activity) => (
-                <TouchableOpacity
+                <JobSheetCard
                   key={activity.id}
-                  activeOpacity={0.7}
-                  style={styles.activityCard}
+                  jobSheet={activity}
                   onPress={() => navigation.navigate('JobDetailAdminScreen', { jobSheetId: activity.id })}
-                >
-                  <View style={styles.activityHeader}>
-                    <Text style={styles.activityReg}>{activity.registration_number}</Text>
-                    <Text style={styles.activityTime}>{timeAgo(activity.updated_at)}</Text>
-                  </View>
-                  <Text style={styles.activityCustomer}>{activity.customer_name}</Text>
-                  <View style={styles.activityFooter}>
-                    <View style={[styles.badge, { backgroundColor: getStatusColor(activity.status) }]}>
-                      <Text style={[styles.badgeText, { color: getStatusTextColor(activity.status) }]}>{activity.status}</Text>
-                    </View>
-                    <Text style={styles.activityTech}>
-                      👤 {activity.assigned_profile?.full_name || 'Unassigned'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                  onQuickStatusPress={() => {
+                    setSelectedJobSheet(activity);
+                    setQuickStatusModalVisible(true);
+                  }}
+                />
               ))
             )}
           </>
         )}
       </ScrollView>
+
+      <TouchableOpacity 
+        style={styles.fab}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('CreateJobSheet')}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+
+      <QuickStatusModal
+        visible={quickStatusModalVisible}
+        jobSheet={selectedJobSheet}
+        onClose={() => setQuickStatusModalVisible(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
     </SafeAreaView>
   );
 };
@@ -337,4 +357,27 @@ const styles = StyleSheet.create({
   errorText: { color: '#e74c3c', fontSize: 14, textAlign: 'center', fontWeight: '600' },
   emptyContainer: { alignItems: 'center', padding: 40 },
   emptyText: { color: '#888', fontSize: 16 },
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFD700',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 10,
+    zIndex: 999,
+  },
+  fabText: {
+    fontSize: 34,
+    fontWeight: 'bold',
+    color: '#1a1a2e',
+    lineHeight: 38,
+  },
 });

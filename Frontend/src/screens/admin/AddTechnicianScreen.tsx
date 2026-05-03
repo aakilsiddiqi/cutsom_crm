@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +31,7 @@ export const AddTechnicianScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isActive, setIsActive] = useState(true);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -144,6 +146,7 @@ export const AddTechnicianScreen = () => {
           full_name: fullName.trim(),
           role: 'user',
           phone: phone.trim(),
+          is_active: isActive,
         });
 
       if (profileError) {
@@ -268,6 +271,20 @@ export const AddTechnicianScreen = () => {
             {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
           </View>
 
+          {/* Active Status */}
+          <View style={[styles.inputGroup, styles.switchGroup]}>
+            <View>
+              <Text style={styles.label}>Active Status</Text>
+              <Text style={styles.helperText}>Inactive technicians cannot login or be assigned jobs.</Text>
+            </View>
+            <Switch
+              value={isActive}
+              onValueChange={setIsActive}
+              trackColor={{ false: '#767577', true: '#FFD700' }}
+              thumbColor={isActive ? '#1a1a2e' : '#f4f3f4'}
+            />
+          </View>
+
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.disabledButton]}
             onPress={handleCreateTechnician}
@@ -312,6 +329,8 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   inputError: { borderColor: '#dc3545' },
+  switchGroup: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
+  helperText: { fontSize: 12, color: '#888', marginTop: 4, maxWidth: '90%' },
   errorText: { color: '#dc3545', fontSize: 12, marginTop: 4 },
   submitButton: {
     backgroundColor: '#FFD700',

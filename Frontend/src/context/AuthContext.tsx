@@ -9,6 +9,7 @@ type AuthContextType = {
   loading: boolean;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
+  updateProfile: (updated: Partial<UserProfile>) => void;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => {},
   fetchProfile: async () => {},
+  updateProfile: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -106,8 +108,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateProfile = (updated: Partial<UserProfile>) => {
+    setProfile(prev => prev ? { ...prev, ...updated } as UserProfile : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signOut, fetchProfile }}>
+    <AuthContext.Provider value={{ session, profile, loading, signOut, fetchProfile, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,16 +5,20 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  SafeAreaView,
-  ScrollView,
-  Platform
+  Platform,
+  ScrollView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { RootStackParamList } from '../../types';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
 export const SettingsScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { profile, signOut } = useAuth();
 
   const handleLogout = () => {
@@ -49,7 +53,7 @@ export const SettingsScreen = () => {
   const roleBadgeText = profile?.role === 'admin' ? 'Admin' : 'Technician';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.headerBar}>
         <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>← Back</Text>
@@ -70,7 +74,19 @@ export const SettingsScreen = () => {
           </View>
         </View>
 
-        {/* Info Card */}
+        {/* Profile Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Profile Settings</Text>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('EditProfile')}
+          >
+            <Text style={styles.actionButtonIcon} allowFontScaling={false}>✏️</Text>
+            <Text style={styles.actionButtonText} allowFontScaling={false}>Edit Profile</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Support Section */}
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Email</Text>
@@ -87,6 +103,15 @@ export const SettingsScreen = () => {
             <Text style={styles.infoValue}>{profile?.username || 'N/A'}</Text>
           </View>
         </View>
+
+        {/* Edit Profile Button */}
+        <TouchableOpacity 
+          style={styles.editButton} 
+          activeOpacity={0.7} 
+          onPress={() => navigation.navigate('EditProfile')}
+        >
+          <Text style={styles.editButtonText}>✏️ Edit Profile</Text>
+        </TouchableOpacity>
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} activeOpacity={0.7} onPress={handleLogout}>
@@ -121,8 +146,15 @@ const styles = StyleSheet.create({
   infoLabel: { color: '#888', fontSize: 15 },
   infoValue: { color: '#333', fontSize: 15, fontWeight: '500' },
   divider: { height: 1, backgroundColor: '#f0f0f0' },
+  editButton: { backgroundColor: '#FFD700', paddingVertical: 16, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 16 },
+  editButtonText: { color: '#1a1a2e', fontWeight: 'bold', fontSize: 17 },
   logoutButton: { backgroundColor: '#e74c3c', paddingVertical: 16, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 40 },
   logoutButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
+  section: { width: '100%', marginBottom: 20 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#555', marginBottom: 12, marginLeft: 4 },
+  actionButton: { flexDirection: 'row', backgroundColor: '#fff', padding: 16, borderRadius: 12, alignItems: 'center', elevation: 2 },
+  actionButtonIcon: { fontSize: 20, marginRight: 12 },
+  actionButtonText: { fontSize: 16, fontWeight: '600', color: '#333' },
   appInfo: { alignItems: 'center' },
   appVersion: { color: '#888', fontSize: 14, marginBottom: 4 },
   poweredBy: { color: '#aaa', fontSize: 12 },

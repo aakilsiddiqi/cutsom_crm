@@ -145,6 +145,7 @@ export const ReportsScreen = () => {
         .from('job_sheets')
         .select(`
           id,
+          serial_number,
           registration_number,
           customer_name,
           customer_mobile,
@@ -244,10 +245,11 @@ export const ReportsScreen = () => {
     setExportingSummary(true);
     try {
       const headers = [
-        'Registration No', 'Customer Name', 'Mobile', 'Machine Model',
+        'Serial No', 'Registration No', 'Customer Name', 'Mobile', 'Machine Model',
         'Entry Date', 'Completion Date', 'TAT', 'Status', 'Technician', 'Issues'
       ];
       const rows = jobsData.map(job => [
+        job.serial_number || 'N/A',
         job.registration_number,
         job.customer_name ?? '',
         job.customer_mobile ?? '',

@@ -8,13 +8,13 @@ import {
   ActivityIndicator,
   Linking,
   Image,
-  Modal,
-  SafeAreaView
+  Modal
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
-import { RootStackParamList, JobSheet, JobUpdate, UserProfile } from '../../types';
+import { RootStackParamList, JobSheet, JobUpdate } from '../../types';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'JobSheetDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'JobSheetDetail'>;
@@ -112,7 +112,7 @@ export const JobSheetDetailScreen = () => {
   if (loading || !jobSheet) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#FFD700" />
+        <ActivityIndicator size="large" color="#1a1a2e" />
       </View>
     );
   }
@@ -120,22 +120,49 @@ export const JobSheetDetailScreen = () => {
   const statusColors = getStatusColors(jobSheet.status);
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} allowFontScaling={false}>Job Sheet Details</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         
         {/* SECTION 1: Header */}
         <View style={styles.headerSection}>
-          <Text style={styles.registrationLarge}>{jobSheet.registration_number}</Text>
-          <View style={styles.statusRow}>
+          <Text style={styles.registrationLarge} allowFontScaling={false}>{jobSheet.registration_number}</Text>
+          {jobSheet.serial_number && (
+            <Text style={styles.serialNumber} allowFontScaling={false}>Serial: {jobSheet.serial_number}</Text>
+          )}
+
+          <View style={styles.badgesContainer}>
             <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
-              <Text style={[styles.badgeText, { color: statusColors.text }]}>{jobSheet.status}</Text>
+              <Text style={[styles.badgeText, { color: statusColors.text }]} allowFontScaling={false}>{jobSheet.status}</Text>
             </View>
-            <Text style={styles.dateText}>{formatDate(jobSheet.entry_date_time)}</Text>
+            
+            {jobSheet.service_location && (
+              <View style={[styles.badge, styles.locationBadge]}>
+                <Text style={styles.locationBadgeText} allowFontScaling={false}>
+                  {jobSheet.service_location === 'Workshop' ? '🏭 Workshop' : '📍 On-Site'}
+                </Text>
+              </View>
+            )}
+
+            {jobSheet.priority === 'Urgent' && (
+              <View style={[styles.badge, styles.urgentBadge]}>
+                <Text style={styles.urgentBadgeText} allowFontScaling={false}>⚡ Urgent</Text>
+              </View>
+            )}
           </View>
+
+          <Text style={styles.dateText} allowFontScaling={false}>{formatDate(jobSheet.entry_date_time)}</Text>
 
           {jobSheet.admin_instructions && (
             <View style={styles.instructionBox}>
-              <Text style={styles.instructionTitle}>🔔 Admin Instructions</Text>
+              <Text style={styles.instructionTitle} allowFontScaling={false}>🔔 Admin Instructions</Text>
               <Text style={styles.instructionText}>{jobSheet.admin_instructions}</Text>
             </View>
           )}
@@ -143,14 +170,14 @@ export const JobSheetDetailScreen = () => {
 
         {/* SECTION 2: Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Customer & Machine Info</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Customer & Machine Info</Text>
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Customer</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Customer</Text>
               <Text style={styles.infoValue}>{jobSheet.customer_name || 'N/A'}</Text>
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Mobile</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Mobile</Text>
               {jobSheet.customer_mobile ? (
                 <TouchableOpacity onPress={() => handleCall(jobSheet.customer_mobile!)}>
                   <Text style={[styles.infoValue, styles.linkText]}>{jobSheet.customer_mobile}</Text>
@@ -160,11 +187,11 @@ export const JobSheetDetailScreen = () => {
               )}
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Model</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Model</Text>
               <Text style={styles.infoValue}>{jobSheet.machine_model || 'N/A'}</Text>
             </View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Assigned Tech</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Assigned Tech</Text>
               <Text style={styles.infoValue}>
                 {jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'}
               </Text>
@@ -174,7 +201,7 @@ export const JobSheetDetailScreen = () => {
 
         {/* SECTION 3: Issues */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Issues & Description</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Issues & Description</Text>
           <View style={styles.infoCard}>
             <Text style={styles.descriptionText}>{jobSheet.issues_description || 'No description provided.'}</Text>
           </View>
@@ -182,9 +209,9 @@ export const JobSheetDetailScreen = () => {
 
         {/* SECTION 4: Parts */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Parts Information</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Parts Information</Text>
           <View style={styles.infoCard}>
-            <Text style={styles.subTitle}>Parts Needed:</Text>
+            <Text style={styles.subTitle} allowFontScaling={false}>Parts Needed:</Text>
             {jobSheet.parts_needed && jobSheet.parts_needed.length > 0 ? (
               jobSheet.parts_needed.map((part, idx) => (
                 <Text key={idx} style={styles.listItem}>• {part}</Text>
@@ -195,7 +222,7 @@ export const JobSheetDetailScreen = () => {
             
             <View style={styles.divider} />
 
-            <Text style={styles.subTitle}>Parts Used:</Text>
+            <Text style={styles.subTitle} allowFontScaling={false}>Parts Used:</Text>
             {jobSheet.parts_used && jobSheet.parts_used.length > 0 ? (
               jobSheet.parts_used.map((part, idx) => (
                 <Text key={idx} style={styles.listItem}>• {part.name} (Qty: {part.quantity})</Text>
@@ -209,7 +236,7 @@ export const JobSheetDetailScreen = () => {
         {/* SECTION 5: Photos */}
         {jobSheet.photos && jobSheet.photos.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos</Text>
+            <Text style={styles.sectionTitle} allowFontScaling={false}>Photos</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {jobSheet.photos.map((photoUrl, idx) => (
                 <TouchableOpacity 
@@ -228,7 +255,7 @@ export const JobSheetDetailScreen = () => {
 
         {/* SECTION 6: Activity Log */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activity Log</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Activity Log</Text>
           {jobUpdates.length > 0 ? (
             jobUpdates.map((update) => (
               <View key={update.id} style={styles.logCard}>
@@ -258,11 +285,11 @@ export const JobSheetDetailScreen = () => {
           style={styles.editButton} 
           onPress={() => navigation.navigate('EditJobSheet', { jobSheetId })}
         >
-          <Text style={styles.buttonTextWhite}>Edit Job Sheet</Text>
+          <Text style={styles.buttonTextWhite} allowFontScaling={false}>Edit Job Sheet</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.aiButton} onPress={() => {}}>
-          <Text style={styles.buttonTextWhite}>Get AI Help</Text>
+          <Text style={styles.buttonTextWhite} allowFontScaling={false}>Get AI Help</Text>
         </TouchableOpacity>
       </View>
 
@@ -278,7 +305,7 @@ export const JobSheetDetailScreen = () => {
             style={styles.closeButton} 
             onPress={() => setModalVisible(false)}
           >
-            <Text style={styles.closeButtonText}>✕ Close</Text>
+            <Text style={styles.closeButtonText} allowFontScaling={false}>✕ Close</Text>
           </TouchableOpacity>
           {selectedImage && (
             <Image 
@@ -290,11 +317,37 @@ export const JobSheetDetailScreen = () => {
         </SafeAreaView>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1a1a2e',
+  },
+  backBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+  },
+  backBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFD700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -314,22 +367,47 @@ const styles = StyleSheet.create({
   registrationLarge: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    color: '#1a1a2e',
   },
-  statusRow: {
+  serialNumber: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  badgesContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
   },
   badgeText: {
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  locationBadge: {
+    backgroundColor: '#e9ecef',
+    borderWidth: 1,
+    borderColor: '#ced4da',
+  },
+  locationBadgeText: {
+    color: '#495057',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  urgentBadge: {
+    backgroundColor: '#FF4444',
+  },
+  urgentBadgeText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   dateText: {
     color: '#666',
@@ -357,7 +435,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#1a1a2e',
     marginBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
@@ -428,7 +506,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 10,
     borderLeftWidth: 3,
-    borderLeftColor: '#3498db',
+    borderLeftColor: '#1a1a2e',
   },
   logHeader: {
     flexDirection: 'row',
@@ -445,7 +523,7 @@ const styles = StyleSheet.create({
   },
   logStatusChange: {
     fontWeight: '600',
-    color: '#2ecc71',
+    color: '#28a745',
     marginBottom: 2,
   },
   logNote: {
@@ -464,7 +542,7 @@ const styles = StyleSheet.create({
   },
   editButton: {
     flex: 1,
-    backgroundColor: '#007bff',
+    backgroundColor: '#1a1a2e',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
@@ -472,7 +550,7 @@ const styles = StyleSheet.create({
   },
   aiButton: {
     flex: 1,
-    backgroundColor: '#28a745',
+    backgroundColor: '#FFD700',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',

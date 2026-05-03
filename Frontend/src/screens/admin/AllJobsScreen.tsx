@@ -13,11 +13,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
-import { AdminStackParamList, JobSheetStatus } from '../../types';
+import { AdminStackParamList, JobSheetStatus, JobSheet } from '../../types';
+import { JobSheetCard } from '../../components/JobSheetCard';
+import { QuickStatusModal } from '../../components/QuickStatusModal';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AdminTabs'>;
 
-type StatusFilter = 'All' | JobSheetStatus;
+type StatusFilter = 'All' | JobSheetStatus | 'Urgent';
 
 export const AllJobsScreen = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -38,6 +40,10 @@ export const AllJobsScreen = () => {
   const [page, setPage] = useState(0);
   const limit = 20;
   const [hasMore, setHasMore] = useState(true);
+
+  // Quick Status Modal
+  const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
+  const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
   const parseDate = (dStr: string, isEnd: boolean): string | null => {
     const parts = dStr.split('/');
@@ -73,8 +79,10 @@ export const AllJobsScreen = () => {
         query = query.or(`registration_number.ilike.${searchTerms},customer_name.ilike.${searchTerms},customer_mobile.ilike.${searchTerms}`);
       }
 
-      // Apply Status
-      if (statusFilter !== 'All') {
+      // Apply Status/Priority
+      if (statusFilter === 'Urgent') {
+        query = query.eq('priority', 'Urgent');
+      } else if (statusFilter !== 'All') {
         query = query.eq('status', statusFilter);
       }
 
@@ -164,46 +172,24 @@ export const AllJobsScreen = () => {
     return new Intl.DateTimeFormat('en-GB', options).format(new Date(dateString));
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'In Queue': return { bg: '#FFF3CD', text: '#856404' };
-      case 'In Progress': return { bg: '#CCE5FF', text: '#004085' };
-      case 'Completed': return { bg: '#D4EDDA', text: '#155724' };
-      case 'On Hold': return { bg: '#F8D7DA', text: '#721c24' };
-      default: return { bg: '#eee', text: '#333' };
-    }
+  const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
+    setJobs((prevJobs) =>
+      prevJobs.map((job) =>
+        job.id === jobSheetId ? { ...job, status: newStatus } : job
+      )
+    );
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    const colors = getStatusColor(item.status);
     return (
-      <TouchableOpacity
-        activeOpacity={0.7}
-        style={styles.card}
+      <JobSheetCard
+        jobSheet={item}
         onPress={() => navigation.navigate('JobDetailAdminScreen', { jobSheetId: item.id })}
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.regNumber}>{item.registration_number}</Text>
-          <View style={[styles.badge, { backgroundColor: colors.bg }]}>
-            <Text style={[styles.badgeText, { color: colors.text }]}>{item.status}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.customerText}>
-          {item.customer_name || 'N/A'} {item.customer_mobile ? `• ${item.customer_mobile}` : ''}
-        </Text>
-        <Text style={styles.modelText}>Model: {item.machine_model || 'N/A'}</Text>
-        <Text style={styles.dateText}>{formatDate(item.entry_date_time)}</Text>
-
-        <View style={styles.cardFooter}>
-          <Text style={styles.techText}>
-            👤 {item.assignee?.full_name || 'Unassigned'}
-          </Text>
-          {item.status === 'Completed' && item.tat_hours !== null && (
-            <Text style={styles.tatText}>TAT: {item.tat_hours} hrs</Text>
-          )}
-        </View>
-      </TouchableOpacity>
+        onQuickStatusPress={() => {
+          setSelectedJobSheet(item);
+          setQuickStatusModalVisible(true);
+        }}
+      />
     );
   };
 
@@ -229,7 +215,7 @@ export const AllJobsScreen = () => {
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            data={['All', 'In Queue', 'In Progress', 'On Hold', 'Completed']}
+            data={['All', 'In Queue', 'In Progress', 'On Hold', 'Completed', 'Urgent']}
             keyExtractor={(item) => item}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -237,8 +223,12 @@ export const AllJobsScreen = () => {
                 style={[styles.pill, statusFilter === item && styles.pillActive]}
                 onPress={() => setStatusFilter(item as StatusFilter)}
               >
-                <Text style={[styles.pillText, statusFilter === item && styles.pillTextActive]}>
-                  {item}
+                <Text style={[
+                  styles.pillText, 
+                  statusFilter === item && styles.pillTextActive,
+                  item === 'Urgent' && statusFilter !== 'Urgent' && { color: '#e74c3c' }
+                ]}>
+                  {item === 'Urgent' ? '⚡ Urgent' : item}
                 </Text>
               </TouchableOpacity>
             )}
@@ -300,6 +290,13 @@ export const AllJobsScreen = () => {
           />
         )}
       </View>
+
+      <QuickStatusModal
+        visible={quickStatusModalVisible}
+        jobSheet={selectedJobSheet}
+        onClose={() => setQuickStatusModalVisible(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
     </SafeAreaView>
   );
 };

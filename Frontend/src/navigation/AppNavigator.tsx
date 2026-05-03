@@ -13,6 +13,7 @@ import { CreateJobSheetScreen } from '../screens/user/CreateJobSheetScreen';
 import { JobSheetDetailScreen } from '../screens/user/JobSheetDetailScreen';
 import { EditJobSheetScreen } from '../screens/user/EditJobSheetScreen';
 import { SettingsScreen } from '../screens/shared/SettingsScreen';
+import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -43,6 +44,11 @@ export const AppNavigator = () => {
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen} 
+              options={{ headerShown: false }} 
+            />
+            <Stack.Screen 
+              name="EditProfile" 
+              component={EditProfileScreen} 
               options={{ headerShown: false }} 
             />
             <Stack.Screen 

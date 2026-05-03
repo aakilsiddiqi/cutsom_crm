@@ -10,6 +10,8 @@ import { JobDetailAdminScreen } from '../screens/admin/JobDetailAdminScreen';
 import { ReportsScreen } from '../screens/admin/ReportsScreen';
 import { AddTechnicianScreen } from '../screens/admin/AddTechnicianScreen';
 import { SettingsScreen } from '../screens/shared/SettingsScreen';
+import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
+import { CreateJobSheetScreen } from '../screens/user/CreateJobSheetScreen';
 import { AdminStackParamList } from '../types';
 
 const Tab = createBottomTabNavigator();
@@ -62,6 +64,8 @@ export const AdminNavigator = () => (
     <Stack.Screen name="AdminTabs" component={AdminTabNavigator} />
     <Stack.Screen name="JobDetailAdminScreen" component={JobDetailAdminScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
+    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     <Stack.Screen name="AddTechnician" component={AddTechnicianScreen} />
+    <Stack.Screen name="CreateJobSheet" component={CreateJobSheetScreen} />
   </Stack.Navigator>
 );

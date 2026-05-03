@@ -8,8 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   SafeAreaView,
-  Linking
+  Linking,
+  Switch,
+  Alert,
+  Modal
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
@@ -28,6 +32,13 @@ export const TeamScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [errorOccurred, setErrorOccurred] = useState(false);
   const [teamStats, setTeamStats] = useState<TeamMemberStats[]>([]);
+
+  // Reassignment Modal State
+  const [reassignModalVisible, setReassignModalVisible] = useState(false);
+  const [techToRemove, setTechToRemove] = useState<{ id: string, name: string } | null>(null);
+  const [activeJobsToReassign, setActiveJobsToReassign] = useState<any[]>([]);
+  const [availableTechs, setAvailableTechs] = useState<UserProfile[]>([]);
+  const [reassignToTechId, setReassignToTechId] = useState('');
 
   const fetchTeamStats = async () => {
     try {
@@ -104,10 +115,141 @@ export const TeamScreen = () => {
     Linking.openURL(`tel:${phone}`);
   };
 
+  const toggleTechStatus = async (techId: string, currentStatus: boolean, name: string) => {
+    Alert.alert(
+      'Confirm Status Change',
+      `Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ is_active: !currentStatus })
+                .eq('id', techId);
+
+              if (error) throw error;
+              
+              setTeamStats(prev => prev.map(t => 
+                t.id === techId ? { ...t, is_active: !currentStatus } : t
+              ));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to update status');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleRemovePress = async (techId: string, name: string) => {
+    try {
+      const { data: activeJobs, error } = await supabase
+        .from('job_sheets')
+        .select('id, registration_number')
+        .eq('assigned_to', techId)
+        .neq('status', 'Completed');
+
+      if (error) throw error;
+
+      if (!activeJobs || activeJobs.length === 0) {
+        Alert.alert(
+          'Remove Technician',
+          `Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Remove', 
+              style: 'destructive', 
+              onPress: () => deactivateUser(techId, name) 
+            }
+          ]
+        );
+      } else {
+        const { data: otherTechs } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'user')
+          .eq('is_active', true)
+          .neq('id', techId);
+        
+        setAvailableTechs((otherTechs as UserProfile[]) || []);
+        setActiveJobsToReassign(activeJobs);
+        setTechToRemove({ id: techId, name });
+        setReassignToTechId('');
+        setReassignModalVisible(true);
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to fetch active jobs.');
+    }
+  };
+
+  const deactivateUser = async (techId: string, name: string) => {
+    setLoading(true);
+    await supabase.from('profiles').update({ is_active: false }).eq('id', techId);
+    Alert.alert('✅ Technician Removed', `${name} has been deactivated.`);
+    fetchTeamStats();
+  };
+
+  const handleReassignAndRemove = async () => {
+    if (!techToRemove || !reassignToTechId) {
+      Alert.alert('Error', 'Please select a technician to reassign jobs to.');
+      return;
+    }
+    
+    setLoading(true);
+    setReassignModalVisible(false);
+    
+    try {
+      // Reassign jobs
+      const { error: updateJobsError } = await supabase
+        .from('job_sheets')
+        .update({ assigned_to: reassignToTechId })
+        .eq('assigned_to', techToRemove.id)
+        .neq('status', 'Completed');
+        
+      if (updateJobsError) throw updateJobsError;
+
+      // Deactivate
+      const { error: deactivateError } = await supabase
+        .from('profiles')
+        .update({ is_active: false })
+        .eq('id', techToRemove.id);
+
+      if (deactivateError) throw deactivateError;
+
+      const newTechName = availableTechs.find(t => t.id === reassignToTechId)?.full_name || 'the selected technician';
+        
+      Alert.alert('✅ Success', `Jobs reassigned to ${newTechName} and ${techToRemove.name} has been deactivated.`);
+      fetchTeamStats();
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'Failed to complete the process.');
+      setLoading(false);
+    }
+  };
+
   const renderItem = ({ item }: { item: TeamMemberStats }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.nameText}>{item.full_name || item.username}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.nameText}>{item.full_name || item.username}</Text>
+        </View>
+        <View style={styles.toggleContainer}>
+          <Text style={[styles.statusText, { color: item.is_active ? '#28a745' : '#dc3545' }]}>
+            {item.is_active ? 'Active' : 'Inactive'}
+          </Text>
+          <Switch
+            value={item.is_active}
+            onValueChange={() => toggleTechStatus(item.id, item.is_active || false, item.full_name || item.username)}
+            trackColor={{ false: '#767577', true: '#FFD700' }}
+            thumbColor={item.is_active ? '#1a1a2e' : '#f4f3f4'}
+            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+          />
+        </View>
       </View>
       
       {item.phone ? (
@@ -117,6 +259,15 @@ export const TeamScreen = () => {
       ) : (
         <Text style={styles.noPhoneText}>No phone number</Text>
       )}
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity 
+          style={styles.removeBtn} 
+          onPress={() => handleRemovePress(item.id, item.full_name || item.username)}
+        >
+          <Text style={styles.removeBtnText}>🗑️ Remove</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.statsRow}>
         <View style={[styles.badge, { backgroundColor: '#CCE5FF' }]}>
@@ -172,6 +323,54 @@ export const TeamScreen = () => {
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      {/* Reassign Modal */}
+      <Modal
+        visible={reassignModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReassignModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reassign Active Jobs</Text>
+            <Text style={styles.modalSubtitle}>
+              {techToRemove?.name} has {activeJobsToReassign.length} active jobs.
+            </Text>
+            
+            <View style={styles.activeJobsList}>
+              {activeJobsToReassign.slice(0, 3).map(job => (
+                <Text key={job.id} style={styles.activeJobItem}>• {job.registration_number}</Text>
+              ))}
+              {activeJobsToReassign.length > 3 && (
+                <Text style={styles.activeJobItem}>...and {activeJobsToReassign.length - 3} more</Text>
+              )}
+            </View>
+
+            <Text style={styles.modalLabel}>Reassign all to:</Text>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={reassignToTechId}
+                onValueChange={(val) => setReassignToTechId(val)}
+              >
+                <Picker.Item label="-- Select Technician --" value="" />
+                {availableTechs.map(tech => (
+                  <Picker.Item key={tech.id} label={tech.full_name || tech.username} value={tech.id} />
+                ))}
+              </Picker>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setReassignModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalReassignBtn} onPress={handleReassignAndRemove}>
+                <Text style={styles.modalReassignText}>Reassign & Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -189,11 +388,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   listContent: { padding: 16 },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   nameText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  phoneButton: { marginBottom: 12 },
+  toggleContainer: { alignItems: 'flex-end', marginLeft: 10 },
+  statusText: { fontSize: 11, fontWeight: 'bold', marginBottom: 2 },
+  phoneButton: { marginBottom: 8 },
   phoneText: { color: '#0066cc', fontSize: 15, fontWeight: '500' },
-  noPhoneText: { color: '#888', fontSize: 14, marginBottom: 12, fontStyle: 'italic' },
+  noPhoneText: { color: '#888', fontSize: 14, marginBottom: 8, fontStyle: 'italic' },
+  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
+  removeBtn: { backgroundColor: '#ffeeee', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#ffcccc' },
+  removeBtnText: { color: '#dc3545', fontWeight: 'bold', fontSize: 13 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   badge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexGrow: 1, alignItems: 'center' },
   badgeText: { fontWeight: 'bold', fontSize: 14 },
@@ -238,4 +442,17 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
     lineHeight: 38,
   },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12, width: '100%', maxWidth: 400 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 8 },
+  modalSubtitle: { fontSize: 15, color: '#e74c3c', marginBottom: 16, fontWeight: '500' },
+  activeJobsList: { backgroundColor: '#f9f9f9', padding: 12, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
+  activeJobItem: { fontSize: 14, color: '#555', marginBottom: 4 },
+  modalLabel: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 8 },
+  pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 24, backgroundColor: '#fff' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
+  modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#f0f0f0' },
+  modalCancelText: { color: '#333', fontWeight: 'bold' },
+  modalReassignBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#e74c3c' },
+  modalReassignText: { color: '#fff', fontWeight: 'bold' },
 });

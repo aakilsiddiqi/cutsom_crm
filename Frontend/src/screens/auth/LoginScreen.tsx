@@ -18,21 +18,23 @@ export const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const { session, profile, loading: authLoading, fetchProfile, signOut } = useAuth();
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
-      Alert.alert('Error', 'Please enter both username and password');
+      setLoginError('Please enter both username and password');
       return;
     }
 
     setLoading(true);
+    setLoginError(null);
     try {
       const { data: emailData, error: lookupError } = await supabase
         .rpc('get_user_email_by_username', { p_username: username.trim().toLowerCase() });
 
       if (lookupError || !emailData) {
-        Alert.alert('Login Failed', 'Username not found. Please check your username.');
+        setLoginError('Username not found. Please check your username.');
         setLoading(false);
         return;
       }
@@ -43,10 +45,10 @@ export const LoginScreen = () => {
       });
 
       if (signInError) {
-        Alert.alert('Login Failed', 'Incorrect password. Please try again.');
+        setLoginError('Incorrect password. Please try again.');
       }
     } catch (err) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+      setLoginError('Something went wrong. Please try again.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -108,7 +110,10 @@ export const LoginScreen = () => {
               placeholder="Enter your username"
               placeholderTextColor="#aaa"
               value={username}
-              onChangeText={setUsername}
+              onChangeText={(text) => {
+                setUsername(text);
+                setLoginError(null);
+              }}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -121,10 +126,19 @@ export const LoginScreen = () => {
               placeholder="Enter your password"
               placeholderTextColor="#aaa"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                setLoginError(null);
+              }}
               secureTextEntry
             />
           </View>
+
+          {loginError && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>⚠️ {loginError}</Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
@@ -275,5 +289,19 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
     fontWeight: '600',
+  },
+  errorBanner: {
+    backgroundColor: 'rgba(231, 76, 60, 0.15)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(231, 76, 60, 0.3)',
+  },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

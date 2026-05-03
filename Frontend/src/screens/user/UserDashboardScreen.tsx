@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { RootStackParamList, JobSheet, UserProfile } from '../../types';
 import { JobSheetCard } from '../../components/JobSheetCard';
+import { QuickStatusModal } from '../../components/QuickStatusModal';
 import { useAuth } from '../../context/AuthContext';
 import { getGreeting, getGreetingEmoji } from '../../utils/greetingUtils';
 
@@ -33,6 +34,10 @@ export const UserDashboardScreen = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
+
+  // Quick Status Modal
+  const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
+  const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
   const [greeting, setGreeting] = useState(getGreeting());
   const [greetingEmoji, setGreetingEmoji] = useState(getGreetingEmoji());
@@ -67,7 +72,7 @@ export const UserDashboardScreen = () => {
           *,
           assignee:profiles!job_sheets_assigned_to_fkey(*)
         `)
-        .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+        .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -112,6 +117,14 @@ export const UserDashboardScreen = () => {
     month: 'long', 
     year: 'numeric' 
   }).format(new Date());
+
+  const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
+    setJobSheets((prev) =>
+      prev.map((job) =>
+        job.id === jobSheetId ? { ...job, status: newStatus as any } : job
+      )
+    );
+  };
 
   // Metrics
   const activeJobsCount = jobSheets.filter(j => j.status !== 'Completed').length;
@@ -226,12 +239,15 @@ export const UserDashboardScreen = () => {
             <JobSheetCard 
               jobSheet={item} 
               onPress={() => navigation.navigate('JobSheetDetail', { jobSheetId: item.id })}
+              onQuickStatusPress={() => {
+                setSelectedJobSheet(item);
+                setQuickStatusModalVisible(true);
+              }}
             />
           )}
         />
       )}
 
-      {/* FAB */}
       <TouchableOpacity 
         style={styles.fab}
         activeOpacity={0.7}
@@ -239,6 +255,13 @@ export const UserDashboardScreen = () => {
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      <QuickStatusModal
+        visible={quickStatusModalVisible}
+        jobSheet={selectedJobSheet}
+        onClose={() => setQuickStatusModalVisible(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
     </View>
   );
 };

@@ -90,7 +90,7 @@ export const JobDetailAdminScreen = () => {
 
       setEditingInstructions(false);
       fetchJobDetails();
-      Alert.alert('Success', '✅ Instructions saved');
+      Alert.alert('✅ Instructions Saved', 'Instructions have been sent to the technician.');
     } catch (e) {
       Alert.alert('Error', 'Failed to save instructions');
     }
@@ -98,7 +98,7 @@ export const JobDetailAdminScreen = () => {
 
   const loadTechnicians = async () => {
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('role', 'user');
+      const { data, error } = await supabase.from('profiles').select('*').eq('role', 'user').eq('is_active', true);
       if (error) throw error;
       setTechnicians(data as UserProfile[]);
       setReassignModalVisible(true);
@@ -124,7 +124,7 @@ export const JobDetailAdminScreen = () => {
 
       setReassignModalVisible(false);
       fetchJobDetails();
-      Alert.alert('Success', '✅ Job reassigned successfully');
+      Alert.alert('✅ Reassigned Successfully', `Job sheet has been reassigned to ${tech.full_name || tech.username}.`);
     } catch (e) {
       Alert.alert('Error', 'Failed to reassign');
     }
@@ -160,7 +160,7 @@ export const JobDetailAdminScreen = () => {
         setStatusModalVisible(false);
         setStatusNote('');
         fetchJobDetails();
-        Alert.alert('Success', '✅ Job status updated successfully');
+        Alert.alert('✅ Status Updated', `Status changed to "${newStatus}" successfully.`);
       } catch (e) {
         Alert.alert('Error', 'Failed to update status');
       }
@@ -194,9 +194,11 @@ export const JobDetailAdminScreen = () => {
 JCB WORKSHOP - SERVICE RECORD
 ================================
 Machine: ${jobSheet.registration_number}
-Customer: ${jobSheet.customer_name || 'N/A'}
+${jobSheet.serial_number ? `Serial No: ${jobSheet.serial_number}\n` : ''}Customer: ${jobSheet.customer_name || 'N/A'}
 Mobile: ${jobSheet.customer_mobile || 'N/A'}
 Model: ${jobSheet.machine_model || 'N/A'}
+Priority: ${jobSheet.priority || 'Normal'}
+Location: ${jobSheet.service_location || 'Workshop'}
 --------------------------------
 Entry: ${formatDate(jobSheet.entry_date_time)}
 Completed: ${jobSheet.completed_at ? formatDate(jobSheet.completed_at) : 'In Progress'}
@@ -212,7 +214,6 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
 
   const handleShareServiceRecord = async () => {
     const text = generateServiceRecordText();
-    // Use the legacy import to ensure it works or use Paths.document
     try {
       const fileUri = FileSystem.documentDirectory + 'ServiceRecord.txt';
       await FileSystem.writeAsStringAsync(fileUri, text);
@@ -267,7 +268,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
         <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerBarTitle} numberOfLines={1}>{jobSheet.registration_number}</Text>
+        <Text style={styles.headerBarTitle} numberOfLines={1} allowFontScaling={false}>{jobSheet.registration_number}</Text>
         <View style={{ width: 50 }} />
       </View>
 
@@ -275,43 +276,62 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
         
         {/* SECTION 1: Header */}
         <View style={styles.section}>
-          <Text style={styles.registrationLarge}>{jobSheet.registration_number}</Text>
-          <View style={styles.statusRow}>
+          <Text style={styles.registrationLarge} allowFontScaling={false}>{jobSheet.registration_number}</Text>
+          {jobSheet.serial_number && (
+            <Text style={styles.serialNumber} allowFontScaling={false}>Serial: {jobSheet.serial_number}</Text>
+          )}
+
+          <View style={styles.badgesContainer}>
             <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
-              <Text style={[styles.badgeText, { color: statusColors.text }]}>{jobSheet.status}</Text>
+              <Text style={[styles.badgeText, { color: statusColors.text }]} allowFontScaling={false}>{jobSheet.status}</Text>
             </View>
-            <Text style={styles.dateText}>{formatDate(jobSheet.entry_date_time)}</Text>
+            
+            {jobSheet.service_location && (
+              <View style={[styles.badge, styles.locationBadge]}>
+                <Text style={styles.locationBadgeText} allowFontScaling={false}>
+                  {jobSheet.service_location === 'Workshop' ? '🏭 Workshop' : '📍 On-Site'}
+                </Text>
+              </View>
+            )}
+
+            {jobSheet.priority === 'Urgent' && (
+              <View style={[styles.badge, styles.urgentBadge]}>
+                <Text style={styles.urgentBadgeText} allowFontScaling={false}>⚡ Urgent</Text>
+              </View>
+            )}
           </View>
+          
+          <Text style={styles.dateText} allowFontScaling={false}>{formatDate(jobSheet.entry_date_time)}</Text>
           {jobSheet.completed_at && (
             <View style={{ marginTop: 8 }}>
-              <Text style={{ color: '#155724', fontWeight: 'bold' }}>Completed: {formatDate(jobSheet.completed_at)}</Text>
-              <Text style={{ color: '#155724', fontWeight: 'bold' }}>TAT: {jobSheet.tat_hours} hrs</Text>
+              <Text style={{ color: '#155724', fontWeight: 'bold' }} allowFontScaling={false}>Completed: {formatDate(jobSheet.completed_at)}</Text>
+              <Text style={{ color: '#155724', fontWeight: 'bold' }} allowFontScaling={false}>TAT: {jobSheet.tat_hours} hrs</Text>
             </View>
           )}
         </View>
 
         {/* SECTION 2: Customer & Machine Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Customer & Machine Info</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Customer & Machine Info</Text>
           <View style={styles.infoCard}>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Customer</Text><Text style={styles.infoValue}>{jobSheet.customer_name || 'N/A'}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.infoLabel} allowFontScaling={false}>Customer</Text><Text style={styles.infoValue}>{jobSheet.customer_name || 'N/A'}</Text></View>
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Mobile</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Mobile</Text>
               {jobSheet.customer_mobile ? (
                 <TouchableOpacity onPress={() => Linking.openURL(`tel:${jobSheet.customer_mobile}`)}>
                   <Text style={[styles.infoValue, { color: '#0066cc', textDecorationLine: 'underline' }]}>{jobSheet.customer_mobile}</Text>
                 </TouchableOpacity>
               ) : <Text style={styles.infoValue}>N/A</Text>}
             </View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Model</Text><Text style={styles.infoValue}>{jobSheet.machine_model || 'N/A'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Created By</Text><Text style={styles.infoValue}>{jobSheet.creator?.full_name || jobSheet.creator?.username || 'System'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Assigned To</Text><Text style={styles.infoValue}>{jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.infoLabel} allowFontScaling={false}>Model</Text><Text style={styles.infoValue}>{jobSheet.machine_model || 'N/A'}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.infoLabel} allowFontScaling={false}>Created By</Text><Text style={styles.infoValue}>{jobSheet.creator?.full_name || jobSheet.creator?.username || 'System'}</Text></View>
+            <View style={styles.infoRow}><Text style={styles.infoLabel} allowFontScaling={false}>Assigned To</Text><Text style={styles.infoValue}>{jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'}</Text></View>
           </View>
         </View>
 
         {/* SECTION 3: Admin Instructions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Admin Instructions</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Admin Instructions</Text>
           {editingInstructions ? (
             <View style={styles.instructionBox}>
               <TextInput
@@ -323,19 +343,19 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
               />
               <View style={{ flexDirection: 'row', marginTop: 10 }}>
                 <TouchableOpacity activeOpacity={0.7} style={[styles.button, { flex: 1, marginRight: 5 }]} onPress={handleSaveInstructions}>
-                  <Text style={styles.buttonText}>Save Instructions</Text>
+                  <Text style={styles.buttonText} allowFontScaling={false}>Save Instructions</Text>
                 </TouchableOpacity>
                 <TouchableOpacity activeOpacity={0.7} style={[styles.button, { flex: 1, marginLeft: 5, backgroundColor: '#888' }]} onPress={() => setEditingInstructions(false)}>
-                  <Text style={styles.buttonText}>Cancel</Text>
+                  <Text style={styles.buttonText} allowFontScaling={false}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
             <View style={styles.instructionBox}>
-              <Text style={styles.instructionTitle}>🔔 Instructions</Text>
+              <Text style={styles.instructionTitle} allowFontScaling={false}>🔔 Instructions</Text>
               <Text style={styles.instructionText}>{jobSheet.admin_instructions || 'No instructions provided.'}</Text>
               <TouchableOpacity activeOpacity={0.7} style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center' }} onPress={() => setEditingInstructions(true)}>
-                <Text style={{ color: '#0066cc', fontWeight: 'bold' }}>✏️ Edit Instructions</Text>
+                <Text style={{ color: '#0066cc', fontWeight: 'bold' }} allowFontScaling={false}>✏️ Edit Instructions</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -345,28 +365,28 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
         <View style={styles.section}>
           <View style={[styles.infoCard, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
             <View>
-              <Text style={styles.infoLabel}>Current Technician</Text>
+              <Text style={styles.infoLabel} allowFontScaling={false}>Current Technician</Text>
               <Text style={[styles.infoValue, { fontSize: 16 }]}>{jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'}</Text>
             </View>
             <TouchableOpacity activeOpacity={0.7} style={[styles.button, { backgroundColor: '#1a1a2e', paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center' }]} onPress={loadTechnicians}>
-              <Text style={[styles.buttonText, { color: '#fff' }]}>👤 Reassign Job</Text>
+              <Text style={[styles.buttonText, { color: '#FFD700' }]} allowFontScaling={false}>👤 Reassign Job</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* SECTION 5: Issues & Parts */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Issues & Parts</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Issues & Parts</Text>
           <View style={styles.infoCard}>
-            <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Issues:</Text>
+            <Text style={{ fontWeight: 'bold', marginBottom: 4 }} allowFontScaling={false}>Issues:</Text>
             <Text style={{ marginBottom: 12 }}>{jobSheet.issues_description || 'None'}</Text>
             
-            <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Parts Needed:</Text>
+            <Text style={{ fontWeight: 'bold', marginBottom: 4 }} allowFontScaling={false}>Parts Needed:</Text>
             {jobSheet.parts_needed?.map((p, i) => <Text key={i}>• {p}</Text>)}
             
             <View style={{ height: 1, backgroundColor: '#eee', marginVertical: 10 }} />
             
-            <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Parts Used:</Text>
+            <Text style={{ fontWeight: 'bold', marginBottom: 4 }} allowFontScaling={false}>Parts Used:</Text>
             {jobSheet.parts_used?.map((p, i) => <Text key={i}>• {p.name} (Qty: {p.quantity})</Text>)}
           </View>
         </View>
@@ -374,7 +394,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
         {/* SECTION 6: Photos */}
         {jobSheet.photos && jobSheet.photos.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos</Text>
+            <Text style={styles.sectionTitle} allowFontScaling={false}>Photos</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {jobSheet.photos.map((url, idx) => (
                 <TouchableOpacity key={idx} onPress={() => { setSelectedImage(url); setImageModalVisible(true); }}>
@@ -387,21 +407,21 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
 
         {/* SECTION 7: BILLING VIEW */}
         <View style={styles.section}>
-          <TouchableOpacity activeOpacity={0.7} style={[styles.button, { backgroundColor: '#28a745', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]} onPress={() => setBillingModalVisible(true)}>
-            <Text style={styles.buttonText}>🧾 View Billing (Service Record)</Text>
+          <TouchableOpacity activeOpacity={0.7} style={[styles.button, { backgroundColor: '#1a1a2e', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]} onPress={() => setBillingModalVisible(true)}>
+            <Text style={[styles.buttonText, { color: '#FFD700' }]} allowFontScaling={false}>🧾 View Billing (Service Record)</Text>
           </TouchableOpacity>
         </View>
 
         {/* SECTION 8: Activity Log */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activity Log</Text>
+          <Text style={styles.sectionTitle} allowFontScaling={false}>Activity Log</Text>
           {jobUpdates.map(u => (
             <View key={u.id} style={styles.logCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: 'bold' }}>{u.updated_by_name || 'System'}</Text>
+                <Text style={{ fontWeight: 'bold', color: '#1a1a2e' }}>{u.updated_by_name || 'System'}</Text>
                 <Text style={{ color: '#888', fontSize: 12 }}>{timeAgo(u.created_at)}</Text>
               </View>
-              {u.status_changed_to && <Text style={{ color: '#2ecc71', fontWeight: 'bold' }}>→ {u.status_changed_to}</Text>}
+              {u.status_changed_to && <Text style={{ color: '#28a745', fontWeight: 'bold' }}>→ {u.status_changed_to}</Text>}
               {u.update_note && <Text style={{ color: '#555', marginTop: 4 }}>{u.update_note}</Text>}
             </View>
           ))}
@@ -412,8 +432,8 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
 
       {/* Bottom Button */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity activeOpacity={0.7} style={[styles.button, { flex: 1, backgroundColor: '#FFD700', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]} onPress={() => setStatusModalVisible(true)}>
-          <Text style={[styles.buttonText, { color: '#000', fontSize: 18 }]}>🔄 Update Status</Text>
+        <TouchableOpacity activeOpacity={0.7} style={[styles.button, { flex: 1, backgroundColor: '#1a1a2e', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]} onPress={() => setStatusModalVisible(true)}>
+          <Text style={[styles.buttonText, { color: '#FFD700', fontSize: 18 }]} allowFontScaling={false}>🔄 Update Status</Text>
         </TouchableOpacity>
       </View>
 
@@ -422,7 +442,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
       <Modal visible={imageModalVisible} transparent={true} onRequestClose={() => setImageModalVisible(false)}>
         <SafeAreaView style={styles.modalBg}>
           <TouchableOpacity style={styles.closeBtn} onPress={() => setImageModalVisible(false)}>
-            <Text style={{ color: '#fff', fontSize: 18 }}>Close</Text>
+            <Text style={{ color: '#fff', fontSize: 18 }} allowFontScaling={false}>Close</Text>
           </TouchableOpacity>
           {selectedImage && <Image source={{ uri: selectedImage }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />}
         </SafeAreaView>
@@ -432,7 +452,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
       <Modal visible={reassignModalVisible} animationType="slide" transparent={true} onRequestClose={() => setReassignModalVisible(false)}>
         <View style={styles.modalBgHalf}>
           <View style={styles.modalContent}>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20 }}>Reassign Job Sheet</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20, color: '#1a1a2e' }} allowFontScaling={false}>Reassign Job Sheet</Text>
             <ScrollView style={{ maxHeight: 300 }}>
               {technicians.map(t => (
                 <TouchableOpacity key={t.id} style={styles.techRow} onPress={() => handleReassign(t)}>
@@ -440,8 +460,8 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={[styles.button, { marginTop: 20, backgroundColor: '#e74c3c' }]} onPress={() => setReassignModalVisible(false)}>
-              <Text style={styles.buttonText}>Cancel</Text>
+            <TouchableOpacity style={[styles.button, { marginTop: 20, backgroundColor: '#888' }]} onPress={() => setReassignModalVisible(false)}>
+              <Text style={styles.buttonText} allowFontScaling={false}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -452,16 +472,16 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
         <SafeAreaView style={[styles.modalBg, { backgroundColor: '#f5f5f5' }]}>
           <View style={{ padding: 20, flex: 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
-              <Text style={{ fontSize: 22, fontWeight: 'bold' }}>Service Record</Text>
+              <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1a1a2e' }} allowFontScaling={false}>Service Record</Text>
               <TouchableOpacity onPress={() => setBillingModalVisible(false)}>
-                <Text style={{ color: '#e74c3c', fontSize: 18, fontWeight: 'bold' }}>Close</Text>
+                <Text style={{ color: '#e74c3c', fontSize: 18, fontWeight: 'bold' }} allowFontScaling={false}>Close</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8 }}>
               <Text style={{ fontFamily: 'monospace' }}>{generateServiceRecordText()}</Text>
             </ScrollView>
-            <TouchableOpacity style={[styles.button, { marginTop: 20, backgroundColor: '#007bff' }]} onPress={handleShareServiceRecord}>
-              <Text style={styles.buttonText}>Share as Text</Text>
+            <TouchableOpacity style={[styles.button, { marginTop: 20, backgroundColor: '#1a1a2e' }]} onPress={handleShareServiceRecord}>
+              <Text style={[styles.buttonText, { color: '#FFD700' }]} allowFontScaling={false}>Share as Text</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -471,7 +491,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
       <Modal visible={statusModalVisible} animationType="slide" transparent={true} onRequestClose={() => setStatusModalVisible(false)}>
         <View style={styles.modalBgHalf}>
           <View style={styles.modalContent}>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20 }}>Update Status</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20, color: '#1a1a2e' }} allowFontScaling={false}>Update Status</Text>
             
             <TextInput
               style={[styles.input, { height: 80, marginBottom: 20 }]}
@@ -490,13 +510,13 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
                     style={[styles.statusCard, { backgroundColor: colors.bg }]}
                     onPress={() => updateStatus(s)}
                   >
-                    <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 16 }}>{s}</Text>
+                    <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 16 }} allowFontScaling={false}>{s}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
             <TouchableOpacity style={[styles.button, { marginTop: 20, backgroundColor: '#888' }]} onPress={() => setStatusModalVisible(false)}>
-              <Text style={styles.buttonText}>Cancel</Text>
+              <Text style={styles.buttonText} allowFontScaling={false}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -509,17 +529,22 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
   headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#1a1a2e' },
-  headerBarTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  backButton: { color: '#fff', fontSize: 16 },
+  headerBarTitle: { color: '#FFD700', fontSize: 20, fontWeight: 'bold' },
+  backButton: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   contentContainer: { padding: 16 },
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ccc', paddingBottom: 4 },
-  registrationLarge: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ccc', paddingBottom: 4 },
+  registrationLarge: { fontSize: 28, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 8 },
+  serialNumber: { fontSize: 14, color: '#666', marginBottom: 12 },
+  badgesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' },
+  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8, marginBottom: 8 },
   badgeText: { fontWeight: 'bold', fontSize: 14 },
+  locationBadge: { backgroundColor: '#e9ecef', borderWidth: 1, borderColor: '#ced4da' },
+  locationBadgeText: { color: '#495057', fontWeight: 'bold', fontSize: 12 },
+  urgentBadge: { backgroundColor: '#FF4444' },
+  urgentBadgeText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
   dateText: { color: '#666', fontSize: 14 },
   infoCard: { backgroundColor: '#fff', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#eee' },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
@@ -529,10 +554,10 @@ const styles = StyleSheet.create({
   instructionTitle: { fontWeight: 'bold', color: '#856404', marginBottom: 4 },
   instructionText: { color: '#856404' },
   thumbnail: { width: 100, height: 100, borderRadius: 8, marginRight: 10, backgroundColor: '#ccc' },
-  logCard: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#3498db' },
+  logCard: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#1a1a2e' },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#ddd' },
-  button: { padding: 14, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  button: { padding: 14, borderRadius: 8, alignItems: 'center', backgroundColor: '#1a1a2e' },
+  buttonText: { color: '#FFD700', fontWeight: 'bold', fontSize: 16 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, textAlignVertical: 'top' },
   modalBg: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   closeBtn: { position: 'absolute', top: 40, right: 20, zIndex: 1, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 },

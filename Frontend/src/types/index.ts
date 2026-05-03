@@ -15,6 +15,7 @@ export type UserProfile = {
   full_name: string | null;    // text, nullable
   role: UserRole;              // text, NOT NULL, 'admin' | 'user'
   phone: string | null;        // text, nullable
+  is_active: boolean;          // boolean, DEFAULT true
   created_at: string;          // timestamptz, DEFAULT NOW()
 };
 
@@ -44,6 +45,9 @@ export type JobSheetRow = {
   parts_needed: string[] | null;
   parts_used: PartUsed[] | null;   // jsonb -> {name, quantity}[]
   photos: string[] | null;          // text[] of public Storage URLs
+  service_location: 'Workshop' | 'On-Site';
+  serial_number: string | null;
+  priority: 'Normal' | 'Urgent';
   completed_at: string | null;
   tat_hours: number | null;
   created_by: string;
@@ -84,6 +88,7 @@ export type RootStackParamList = {
   JobSheetDetail: { jobSheetId: string };
   EditJobSheet: { jobSheetId: string };
   Settings: undefined;
+  EditProfile: undefined;
 };
 
 export type AdminStackParamList = {
@@ -91,6 +96,8 @@ export type AdminStackParamList = {
   JobDetailAdminScreen: { jobSheetId: string };
   Settings: undefined;
   AddTechnician: undefined;
+  EditProfile: undefined;
+  CreateJobSheet: undefined;
 };
 
 // ==========================================
