@@ -59,9 +59,9 @@ export const AdminDashboardScreen = () => {
   const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isMounted: boolean = true) => {
     try {
-      setErrorOccurred(false);
+      if (isMounted) setErrorOccurred(false);
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -80,52 +80,57 @@ export const AdminDashboardScreen = () => {
       if (selectedFilter === 'This Month') filterDate = startOfMonth;
       if (selectedFilter === 'This Quarter') filterDate = startOfQuarter;
 
+      const minDate = filterDate < startOfMonth ? filterDate : startOfMonth;
+      const minIso = minDate.toISOString();
       const filterIso = filterDate.toISOString();
       const monthIso = startOfMonth.toISOString();
 
-      const [
-        totalRes, queueRes, progRes, compRes, holdRes, monthRes, activityRes
-      ] = await Promise.all([
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso),
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso).eq('status', 'In Queue'),
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso).eq('status', 'In Progress'),
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso).eq('status', 'Completed'),
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', filterIso).eq('status', 'On Hold'),
-        supabase.from('job_sheets').select('*', { count: 'exact', head: true }).gte('entry_date_time', monthIso),
-        supabase.from('job_sheets')
-          .select('*, assignee:profiles!job_sheets_assigned_to_fkey(*)')
-          .order('updated_at', { ascending: false })
-          .limit(10)
-      ]);
+      const { data: allJobs, error } = await supabase
+        .from('job_sheets')
+        .select('*, assignee:profiles!job_sheets_assigned_to_fkey(*)')
+        .gte('entry_date_time', minIso);
 
-      if (activityRes.error) throw activityRes.error;
+      if (error) throw error;
 
-      setMetrics({
-        totalToday: totalRes.count || 0,
-        inQueue: queueRes.count || 0,
-        inProgress: progRes.count || 0,
-        completed: compRes.count || 0,
-        onHold: holdRes.count || 0,
-        totalThisMonth: monthRes.count || 0,
-      });
+      if (isMounted) {
+        const filterJobs = allJobs?.filter(j => new Date(j.entry_date_time) >= new Date(filterIso)) || [];
+        const monthJobs = allJobs?.filter(j => new Date(j.entry_date_time) >= new Date(monthIso)) || [];
 
-      setRecentActivity(activityRes.data || []);
+        setMetrics({
+          totalToday: filterJobs.length,
+          inQueue: filterJobs.filter(j => j.status === 'In Queue').length,
+          inProgress: filterJobs.filter(j => j.status === 'In Progress').length,
+          completed: filterJobs.filter(j => j.status === 'Completed').length,
+          onHold: filterJobs.filter(j => j.status === 'On Hold').length,
+          totalThisMonth: monthJobs.length,
+        });
+
+        const sortedActivity = [...filterJobs]
+          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+          .slice(0, 10);
+          
+        setRecentActivity(sortedActivity);
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      setErrorOccurred(true);
+      if (isMounted) setErrorOccurred(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    let isMounted = true;
+    fetchDashboardData(isMounted);
+    return () => { isMounted = false; };
   }, [selectedFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchDashboardData();
+    fetchDashboardData(true);
   }, [selectedFilter]);
 
   const handleLogout = () => {
@@ -158,7 +163,7 @@ export const AdminDashboardScreen = () => {
       )
     );
     // Refresh metrics without full loading
-    fetchDashboardData();
+    fetchDashboardData(true);
   };
 
   const getStatusColor = (status: string) => {

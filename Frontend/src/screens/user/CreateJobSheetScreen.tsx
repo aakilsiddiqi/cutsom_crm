@@ -24,6 +24,7 @@ import { supabase, uploadPhotoFromUri } from '../../services/supabase';
 import { JobSheet, JobSheetStatus, UserProfile, PartUsed } from '../../types';
 import { JobSheetCard } from '../../components/JobSheetCard';
 import { useAuth } from '../../context/AuthContext';
+import { navigateToDashboard, navigateToJobDetail, navigateBack } from '../../utils/navigationUtils';
 
 const STANDARD_MODELS = ['3DX', '3CX', '4CX', 'JS205', 'JS220', '530-110', '535-125'];
 
@@ -207,27 +208,39 @@ export const CreateJobSheetScreen = () => {
         created_by: profile.id,
       };
 
-      const { error } = await supabase.from('job_sheets').insert(newJobSheet);
+      // Step 1: Save to Supabase — .select().single() returns the new row with its ID
+      const { data, error } = await supabase
+        .from('job_sheets')
+        .insert(newJobSheet)
+        .select()
+        .single();
+
       if (error) throw error;
 
-      Alert.alert(
-        '✅ Job Sheet Created',
-        'New job sheet has been created successfully.',
-        [{
-          text: 'OK',
-          onPress: () => {
-            if (profile.role === 'admin') {
-              navigation.navigate('AdminTabs');
-            } else {
-              navigation.navigate('UserDashboard');
+      // Step 2 & 3: Show Alert, navigate ONLY when user taps a button
+      if (Platform.OS === 'web') {
+        window.alert('✅ Job Sheet Created successfully.');
+        navigateToDashboard(navigation, profile.role);
+      } else {
+        Alert.alert(
+          '✅ Job Sheet Created',
+          'New job sheet has been created successfully.',
+          [
+            {
+              text: 'View Job Sheet',
+              onPress: () => navigateToJobDetail(navigation, profile.role, data.id)
+            },
+            {
+              text: 'Go to Dashboard',
+              onPress: () => navigateToDashboard(navigation, profile.role)
             }
-          }
-        }]
-      );
+          ]
+        );
+      }
 
     } catch (error: any) {
       console.error('Submit error:', error);
-      Alert.alert('Error', error.message || 'Failed to create job sheet.');
+      Alert.alert('❌ Error', error.message ?? 'Failed to create job sheet. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -245,7 +258,7 @@ export const CreateJobSheetScreen = () => {
         showsVerticalScrollIndicator={false}
       >
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backBtn}>
                 <Text style={styles.backBtnText}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.screenTitle} allowFontScaling={false}>Create Job Sheet</Text>

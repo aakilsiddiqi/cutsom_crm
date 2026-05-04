@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Image, Modal, SafeAreaView, TextInput, Alert 
 } from 'react-native';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../services/supabase';
 import { AdminStackParamList, JobSheet, JobUpdate, UserProfile, JobSheetStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { navigateBack } from '../../utils/navigationUtils';
 
 type DetailRouteProp = RouteProp<AdminStackParamList, 'JobDetailAdminScreen'>;
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'JobDetailAdminScreen'>;
@@ -41,9 +42,9 @@ export const JobDetailAdminScreen = () => {
   // Status update
   const [statusNote, setStatusNote] = useState('');
 
-  const fetchJobDetails = async () => {
+  const fetchJobDetails = async (isMounted: boolean = true) => {
     try {
-      setLoading(true);
+      if (isMounted) setLoading(true);
       const { data: jobData, error: jobError } = await supabase
         .from('job_sheets')
         .select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*), creator:profiles!job_sheets_created_by_fkey(*)`)
@@ -51,9 +52,7 @@ export const JobDetailAdminScreen = () => {
         .single();
 
       if (jobError) throw jobError;
-      setJobSheet(jobData as JobSheet);
-      setAdminInstructionsText(jobData.admin_instructions || '');
-
+      
       const { data: updatesData, error: updatesError } = await supabase
         .from('job_updates_with_profile')
         .select('*')
@@ -61,17 +60,26 @@ export const JobDetailAdminScreen = () => {
         .order('created_at', { ascending: false });
 
       if (updatesError) throw updatesError;
-      setJobUpdates(updatesData as JobUpdate[]);
+
+      if (isMounted) {
+        setJobSheet(jobData as JobSheet);
+        setAdminInstructionsText(jobData.admin_instructions || '');
+        setJobUpdates(updatesData as JobUpdate[]);
+      }
     } catch (error) {
       console.error('Error fetching job details:', error);
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchJobDetails();
-  }, [jobSheetId]);
+  useFocusEffect(
+    React.useCallback(() => {
+      let isMounted = true;
+      fetchJobDetails(isMounted);
+      return () => { isMounted = false; };
+    }, [jobSheetId])
+  );
 
   const handleSaveInstructions = async () => {
     if (!currentUser) return;
@@ -265,7 +273,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.headerBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => navigateBack(navigation)}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerBarTitle} numberOfLines={1} allowFontScaling={false}>{jobSheet.registration_number}</Text>

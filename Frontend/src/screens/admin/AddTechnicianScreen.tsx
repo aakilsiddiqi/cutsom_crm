@@ -20,6 +20,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AdminStackParamList } from '../../types';
 import { supabase } from '../../services/supabase';
 import { supabaseAdmin } from '../../services/supabaseAdmin';
+import { navigateToDashboard, navigateBack } from '../../utils/navigationUtils';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AddTechnician'>;
 
@@ -160,7 +161,7 @@ export const AddTechnicianScreen = () => {
       Alert.alert(
         '✅ Success',
         `${fullName} can now login with their email and password.`,
-        [{ text: 'OK', onPress: () => navigation.navigate('AdminTabs') }]
+        [{ text: 'OK', onPress: () => navigateToDashboard(navigation, 'admin') }]
       );
     } catch (error: any) {
       console.error('Error creating technician:', error);
@@ -178,7 +179,7 @@ export const AddTechnicianScreen = () => {
       style={{ flex: 1 }}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigateBack(navigation)}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add New Technician</Text>

@@ -41,9 +41,9 @@ export const TeamScreen = () => {
   const [availableTechs, setAvailableTechs] = useState<UserProfile[]>([]);
   const [reassignToTechId, setReassignToTechId] = useState('');
 
-  const fetchTeamStats = async () => {
+  const fetchTeamStats = async (isMounted: boolean = true) => {
     try {
-      setErrorOccurred(false);
+      if (isMounted) setErrorOccurred(false);
       // 1. Fetch all technicians
       const { data: techsData, error: techsError } = await supabase
         .from('profiles')
@@ -55,7 +55,7 @@ export const TeamScreen = () => {
       const technicians = techsData as UserProfile[];
 
       if (technicians.length === 0) {
-        setTeamStats([]);
+        if (isMounted) setTeamStats([]);
         return;
       }
 
@@ -91,25 +91,29 @@ export const TeamScreen = () => {
       // Sort by active jobs descending
       results.sort((a, b) => b.activeJobs - a.activeJobs);
 
-      setTeamStats(results);
+      if (isMounted) setTeamStats(results);
     } catch (error) {
       console.error('Error fetching team stats:', error);
-      setErrorOccurred(true);
+      if (isMounted) setErrorOccurred(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchTeamStats();
+      let isMounted = true;
+      fetchTeamStats(isMounted);
+      return () => { isMounted = false; };
     }, [])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchTeamStats();
+    fetchTeamStats(true);
   }, []);
 
   const handleCall = (phone: string) => {

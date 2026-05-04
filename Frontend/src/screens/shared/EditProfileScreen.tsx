@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
+import { navigateBack } from '../../utils/navigationUtils';
 
 export const EditProfileScreen = () => {
   const navigation = useNavigation();
@@ -83,7 +84,7 @@ export const EditProfileScreen = () => {
       Alert.alert(
         '✅ Profile Updated',
         'Your profile has been saved successfully.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        [{ text: 'OK', onPress: () => navigateBack(navigation) }]
       );
     } catch (error: any) {
       console.error('Error updating profile:', error);
@@ -101,7 +102,7 @@ export const EditProfileScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backButton}>
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Edit Profile</Text>

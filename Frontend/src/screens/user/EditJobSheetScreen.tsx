@@ -24,6 +24,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase, uploadPhotoFromUri } from '../../services/supabase';
 import { JobSheet, JobSheetStatus, UserProfile, PartUsed, RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { navigateBack } from '../../utils/navigationUtils';
 
 type EditRouteProp = RouteProp<RootStackParamList, 'EditJobSheet'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditJobSheet'>;
@@ -130,7 +131,7 @@ export const EditJobSheetScreen = () => {
     } catch (error) {
       console.error('Error fetching data:', error);
       Alert.alert('Error', 'Could not load job sheet details.');
-      navigation.goBack();
+      navigateBack(navigation);
     } finally {
       setInitialLoading(false);
     }
@@ -272,10 +273,25 @@ export const EditJobSheetScreen = () => {
       });
       if (logError) throw logError;
 
-      Alert.alert('Success', 'Job Sheet updated successfully!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      // For Web, use window.alert instead of Alert.alert as custom buttons aren't supported
+      if (Platform.OS === 'web') {
+        window.alert('✅ Job sheet updated successfully.');
+        navigateBack(navigation);
+      } else {
+        Alert.alert(
+          '✅ Details Updated',
+          'Job sheet updated successfully.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigateBack(navigation)
+            }
+          ]
+        );
+      }
     } catch (error: any) {
       console.error('Save error:', error);
-      Alert.alert('Error', error.message || 'Failed to update job sheet.');
+      Alert.alert('❌ Error', error.message ?? 'Failed to update job sheet. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -293,7 +309,7 @@ export const EditJobSheetScreen = () => {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backBtn}>
                 <Text style={styles.backBtnText}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.screenTitle} allowFontScaling={false}>Edit Job Sheet</Text>

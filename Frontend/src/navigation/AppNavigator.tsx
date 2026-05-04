@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -28,8 +28,40 @@ export const AppNavigator = () => {
     );
   }
 
+  const linking: LinkingOptions<RootStackParamList> = {
+    prefixes: ['https://jcb-workshop-crm.vercel.app', 'jcbcrm://'],
+    config: {
+      screens: {
+        Auth: 'login',
+        AdminNavigator: {
+          screens: {
+            AdminTabs: {
+              screens: {
+                Dashboard: 'admin/dashboard',
+                AllJobs: 'admin/jobs',
+                Team: 'admin/team',
+                Reports: 'admin/reports'
+              }
+            },
+            JobDetailAdminScreen: 'admin/job/:jobSheetId',
+            Settings: 'admin/settings',
+            EditProfile: 'admin/profile/edit',
+            AddTechnician: 'admin/technician/add',
+            CreateJobSheet: 'admin/job/create'
+          }
+        },
+        UserDashboard: 'user/dashboard',
+        Settings: 'user/settings',
+        EditProfile: 'user/profile/edit',
+        CreateJobSheet: 'user/job/create',
+        JobSheetDetail: 'user/job/:jobSheetId',
+        EditJobSheet: 'user/job/edit/:jobSheetId'
+      }
+    }
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <Stack.Navigator>
         {!session || !profile ? (
           // Auth Stack

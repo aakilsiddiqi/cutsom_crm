@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -11,10 +11,11 @@ import {
   Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { RootStackParamList, JobSheet, JobUpdate } from '../../types';
+import { navigateBack } from '../../utils/navigationUtils';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'JobSheetDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'JobSheetDetail'>;
@@ -32,8 +33,9 @@ export const JobSheetDetailScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const fetchJobDetails = async () => {
+  const fetchJobDetails = async (isMounted: boolean = true) => {
     try {
+      if (isMounted) setLoading(true);
       // Fetch Job Sheet
       const { data: jobData, error: jobError } = await supabase
         .from('job_sheets')
@@ -45,8 +47,7 @@ export const JobSheetDetailScreen = () => {
         .single();
 
       if (jobError) throw jobError;
-      setJobSheet(jobData as JobSheet);
-
+      
       // Fetch Job Updates (Activity Log) using the new view
       const { data: updatesData, error: updatesError } = await supabase
         .from('job_updates_with_profile')
@@ -55,23 +56,25 @@ export const JobSheetDetailScreen = () => {
         .order('created_at', { ascending: false });
 
       if (updatesError) throw updatesError;
-      setJobUpdates(updatesData as JobUpdate[]);
-      
+
+      if (isMounted) {
+        setJobSheet(jobData as JobSheet);
+        setJobUpdates(updatesData as JobUpdate[]);
+      }
     } catch (error) {
       console.error('Error fetching job details:', error);
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchJobDetails();
-    // Refresh when returning from edit screen
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchJobDetails();
-    });
-    return unsubscribe;
-  }, [navigation, jobSheetId]);
+  useFocusEffect(
+    React.useCallback(() => {
+      let isMounted = true;
+      fetchJobDetails(isMounted);
+      return () => { isMounted = false; };
+    }, [jobSheetId])
+  );
 
   const getStatusColors = (status: string) => {
     switch (status) {
@@ -122,7 +125,7 @@ export const JobSheetDetailScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backBtn}>
           <Text style={styles.backBtnText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} allowFontScaling={false}>Job Sheet Details</Text>

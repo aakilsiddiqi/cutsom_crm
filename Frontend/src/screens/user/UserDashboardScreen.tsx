@@ -50,20 +50,21 @@ export const UserDashboardScreen = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isMounted: boolean = true) => {
     try {
       setErrorOccurred(false);
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
       if (!user) return;
 
       // Fetch Profile
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
       
-      if (profile) setUserProfile(profile as UserProfile);
+      if (profileError) throw profileError;
 
       // Fetch Job Sheets (assigned to OR created by)
       const { data: jobs, error } = await supabase
@@ -76,19 +77,27 @@ export const UserDashboardScreen = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (jobs) setJobSheets(jobs as JobSheet[]);
+      
+      if (isMounted) {
+        if (profile) setUserProfile(profile as UserProfile);
+        if (jobs) setJobSheets(jobs as JobSheet[]);
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      setErrorOccurred(true);
+      if (isMounted) setErrorOccurred(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchDashboardData();
+      let isMounted = true;
+      fetchDashboardData(isMounted);
+      return () => { isMounted = false; };
     }, [])
   );
 
@@ -121,7 +130,7 @@ export const UserDashboardScreen = () => {
   const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
     setJobSheets((prev) =>
       prev.map((job) =>
-        job.id === jobSheetId ? { ...job, status: newStatus as any } : job
+        job.id === jobSheetId ? { ...job, status: newStatus as JobSheet['status'] } : job
       )
     );
   };
