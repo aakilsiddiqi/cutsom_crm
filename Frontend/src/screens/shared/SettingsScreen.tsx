@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types';
+import { navigateBack } from '../../utils/navigationUtils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -55,7 +56,7 @@ export const SettingsScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.headerBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => navigateBack(navigation)}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>

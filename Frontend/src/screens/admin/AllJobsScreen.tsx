@@ -38,7 +38,7 @@ export const AllJobsScreen = () => {
 
   // Pagination
   const [page, setPage] = useState(0);
-  const limit = 20;
+  const limit = 50;
   const [hasMore, setHasMore] = useState(true);
 
   // Quick Status Modal
@@ -60,13 +60,13 @@ export const AllJobsScreen = () => {
     return null;
   };
 
-  const fetchJobs = async (pageNumber: number, isRefresh: boolean = false) => {
+  const fetchJobs = async (pageNumber: number, isRefresh: boolean = false, isMounted: boolean = true) => {
     try {
-      setErrorOccurred(false);
+      if (isMounted) setErrorOccurred(false);
       if (isRefresh) {
-        setLoading(true);
+        if (isMounted) setLoading(true);
       } else {
-        setLoadingMore(true);
+        if (isMounted) setLoadingMore(true);
       }
 
       let query = supabase
@@ -104,7 +104,7 @@ export const AllJobsScreen = () => {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      if (data) {
+      if (data && isMounted) {
         if (isRefresh) {
           setJobs(data);
         } else {
@@ -115,16 +115,20 @@ export const AllJobsScreen = () => {
       }
     } catch (error) {
       console.error('Error fetching jobs:', error);
-      setErrorOccurred(true);
+      if (isMounted) setErrorOccurred(true);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
+      if (isMounted) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchJobs(0, true);
+    let isMounted = true;
+    fetchJobs(0, true, isMounted);
+    return () => { isMounted = false; };
   }, []);
 
   const applyFilters = () => {
@@ -144,10 +148,12 @@ export const AllJobsScreen = () => {
   };
 
   useEffect(() => {
+    let isMounted = true;
     if (!loading) {
       setPage(0);
-      fetchJobs(0, true);
+      fetchJobs(0, true, isMounted);
     }
+    return () => { isMounted = false; };
   }, [statusFilter]);
 
   const onRefresh = useCallback(() => {

@@ -11,7 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  Alert
 } from 'react-native';
 import { supabase } from '../services/supabase';
 import { JobSheet } from '../types';
@@ -79,41 +80,56 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = ({
   const handleUpdate = async () => {
     if (!jobSheet || !selectedStatus) return;
 
-    setLoading(true);
-    try {
-      const updateData: any = { status: selectedStatus };
-      
-      if (selectedStatus === 'Completed') {
-        updateData.completed_at = new Date().toISOString();
-        updateData.tat_hours = Number(
-          ((new Date().getTime() - new Date(jobSheet.entry_date_time).getTime()) / (1000 * 60 * 60)).toFixed(1)
-        );
+    const executeUpdate = async () => {
+      setLoading(true);
+      try {
+        const updateData: any = { status: selectedStatus };
+        
+        if (selectedStatus === 'Completed') {
+          updateData.completed_at = new Date().toISOString();
+          updateData.tat_hours = Number(
+            ((new Date().getTime() - new Date(jobSheet.entry_date_time).getTime()) / (1000 * 60 * 60)).toFixed(1)
+          );
+        }
+
+        const { error: updateError } = await supabase
+          .from('job_sheets')
+          .update(updateData)
+          .eq('id', jobSheet.id);
+
+        if (updateError) throw updateError;
+
+        const { error: logError } = await supabase
+          .from('job_updates')
+          .insert({
+            job_sheet_id: jobSheet.id,
+            update_note: noteText.trim() || `Status updated to ${selectedStatus}`,
+            status_changed_to: selectedStatus,
+          });
+
+        if (logError) throw logError;
+
+        onStatusUpdate(jobSheet.id, selectedStatus);
+        onClose();
+      } catch (error) {
+        console.error('Error updating status:', error);
+        Alert.alert('Error', 'Failed to update status.');
+      } finally {
+        setLoading(false);
       }
+    };
 
-      const { error: updateError } = await supabase
-        .from('job_sheets')
-        .update(updateData)
-        .eq('id', jobSheet.id);
-
-      if (updateError) throw updateError;
-
-      const { error: logError } = await supabase
-        .from('job_updates')
-        .insert({
-          job_sheet_id: jobSheet.id,
-          update_note: noteText.trim() || `Status updated to ${selectedStatus}`,
-          status_changed_to: selectedStatus,
-        });
-
-      if (logError) throw logError;
-
-      onStatusUpdate(jobSheet.id, selectedStatus);
-      onClose();
-    } catch (error) {
-      console.error('Error updating status:', error);
-      alert('Failed to update status.');
-    } finally {
-      setLoading(false);
+    if (selectedStatus === 'Completed') {
+      Alert.alert(
+        'Confirm Completion',
+        'This will mark the job as done and calculate TAT. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue', onPress: executeUpdate }
+        ]
+      );
+    } else {
+      executeUpdate();
     }
   };
 
