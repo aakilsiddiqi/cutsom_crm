@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '../../services/supabase';
 import { JobSheet, JobSheetStatus } from '../../types';
+import { formatShortDate, formatDateTime, formatTAT, convertToISO } from '../../utils/formatting';
+import { getStatusTextColor } from '../../utils/constants';
 
 type TechnicianStats = {
   name: string;
@@ -27,6 +29,33 @@ type TechnicianStats = {
   tatHours: number[];
 };
 
+type JobSheetReport = Record<string, unknown> & {
+  id: string;
+  serial_number?: string;
+  registration_number: string;
+  customer_name?: string;
+  customer_mobile?: string;
+  machine_model?: string;
+  entry_date_time: string;
+  completed_at?: string;
+  tat_hours?: number;
+  status: string;
+  parts_used?: Array<{ name: string; quantity: number }>;
+  issues_description?: string;
+  assigned_profile?: { full_name?: string };
+};
+
+type ReportStats = {
+  total: number;
+  completed: number;
+  inProgress: number;
+  inQueue: number;
+  onHold: number;
+  avgTAT: number;
+  bestTAT: number | null;
+  worstTAT: number | null;
+};
+
 export const ReportsScreen = () => {
   // Date states
   const [fromDate, setFromDate] = useState('');
@@ -35,55 +64,19 @@ export const ReportsScreen = () => {
 
   // Data states
   const [loading, setLoading] = useState(false);
-  const [jobsData, setJobsData] = useState<any[] | null>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [jobsData, setJobsData] = useState<JobSheetReport[] | null>(null);
+  const [stats, setStats] = useState<ReportStats | null>(null);
 
   // Billing states
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [searchResults, setSearchResults] = useState<JobSheetReport[]>([]);
+  const [selectedJob, setSelectedJob] = useState<JobSheetReport | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
   // Export loading states
   const [exportingSummary, setExportingSummary] = useState(false);
   const [exportingParts, setExportingParts] = useState(false);
   const [exportingTeam, setExportingTeam] = useState(false);
-
-  // --- HELPERS ---
-
-  const formatDate = (date: Date): string => {
-    const d = date.getDate().toString().padStart(2, '0');
-    const m = (date.getMonth() + 1).toString().padStart(2, '0');
-    const y = date.getFullYear();
-    return `${d}/${m}/${y}`;
-  };
-
-  const formatDateTime = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    return `${formatDate(date)} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-  };
-
-  const convertToISO = (dateStr: string): string | null => {
-    const parts = dateStr.split('/');
-    if (parts.length !== 3) return null;
-    const [day, month, year] = parts;
-    if (!day || !month || !year || year.length !== 4) return null;
-    const date = new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day)
-    );
-    if (isNaN(date.getTime())) return null;
-    return date.toISOString();
-  };
-
-  const formatTAT = (hours: number): string => {
-    if (hours < 1) return `${Math.round(hours * 60)} mins`;
-    if (hours < 24) return `${hours.toFixed(1)} hrs`;
-    const days = Math.floor(hours / 24);
-    const remainingHours = Math.round(hours % 24);
-    return `${days} days ${remainingHours} hrs`;
-  };
 
   // --- QUICK SELECTS ---
 
@@ -92,14 +85,14 @@ export const ReportsScreen = () => {
     const year = today.getFullYear();
     const month = today.getMonth();
     let from = '';
-    let to = formatDate(today);
+    let to = formatShortDate(today);
 
     switch (type) {
       case 'Week': {
         const dayOfWeek = today.getDay();
         const monday = new Date(today);
         monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-        from = formatDate(monday);
+        from = formatShortDate(monday);
         break;
       }
       case 'Month': {
@@ -109,14 +102,14 @@ export const ReportsScreen = () => {
       case 'LastMonth': {
         const firstDay = new Date(year, month - 1, 1);
         const lastDay = new Date(year, month, 0);
-        from = formatDate(firstDay);
-        to = formatDate(lastDay);
+        from = formatShortDate(firstDay);
+        to = formatShortDate(lastDay);
         break;
       }
       case 'Quarter': {
         const quarter = Math.floor(month / 3);
         const firstDay = new Date(year, quarter * 3, 1);
-        from = formatDate(firstDay);
+        from = formatShortDate(firstDay);
         break;
       }
     }
@@ -168,26 +161,28 @@ export const ReportsScreen = () => {
         setJobsData([]);
         setStats(null);
       } else {
-        setJobsData(data);
+        setJobsData(data as unknown as JobSheetReport[]);
         
-        // Compute stats
-        const completedJobs = data.filter(j => j.status === 'Completed' && j.tat_hours !== null);
-        const tatValues = completedJobs.map(j => j.tat_hours as number);
+        // Compute stats — single pass
+        let completed = 0, inProgress = 0, inQueue = 0, onHold = 0;
+        const tatValues: number[] = [];
+        for (const j of data) {
+          if (j.status === 'Completed') { completed++; if (j.tat_hours !== null) tatValues.push(j.tat_hours); }
+          else if (j.status === 'In Progress') inProgress++;
+          else if (j.status === 'In Queue') inQueue++;
+          else if (j.status === 'On Hold') onHold++;
+        }
+        const avgTAT = tatValues.length > 0 ? tatValues.reduce((a, b) => a + b, 0) / tatValues.length : 0;
         
         const computedStats = {
-          total: data.length,
-          completed: data.filter(j => j.status === 'Completed').length,
-          inProgress: data.filter(j => j.status === 'In Progress').length,
-          inQueue: data.filter(j => j.status === 'In Queue').length,
-          onHold: data.filter(j => j.status === 'On Hold').length,
-          avgTAT: tatValues.length > 0 ? tatValues.reduce((a, b) => a + b, 0) / tatValues.length : 0,
+          total: data.length, completed, inProgress, inQueue, onHold,
+          avgTAT,
           bestTAT: tatValues.length > 0 ? Math.min(...tatValues) : null,
           worstTAT: tatValues.length > 0 ? Math.max(...tatValues) : null,
         };
         setStats(computedStats);
       }
     } catch (error) {
-      console.error('Fetch reports error:', error);
       Alert.alert('Error', 'Failed to fetch report data');
     } finally {
       setLoading(false);
@@ -232,7 +227,6 @@ export const ReportsScreen = () => {
         });
       }
     } catch (e) {
-      console.error('CSV Export Error:', e);
       throw e;
     }
   };
@@ -283,7 +277,7 @@ export const ReportsScreen = () => {
       jobsData.forEach(job => {
         const parts = job.parts_used;
         if (Array.isArray(parts)) {
-          parts.forEach((p: any) => {
+          parts.forEach((p: { name?: string; quantity?: number }) => {
             if (p && p.name) {
               rows.push([
                 job.registration_number,
@@ -399,7 +393,7 @@ Closed   : ${selectedJob.completed_at ? formatDateTime(selectedJob.completed_at)
 TAT      : ${selectedJob.tat_hours ? formatTAT(selectedJob.tat_hours) : 'Ongoing'}
 --------------------------------
 PARTS USED:
-${parts.length > 0 ? parts.map((p: any) => `• ${p.name} x ${p.quantity}`).join('\n') : 'No parts recorded.'}
+${parts.length > 0 ? parts.map((p: { name: string; quantity: number }) => `• ${p.name} x ${p.quantity}`).join('\n') : 'No parts recorded.'}
 --------------------------------
 Issues   : ${selectedJob.issues_description ?? 'None'}
 Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
@@ -417,16 +411,6 @@ Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
       }
     } catch (e) {
       Alert.alert('Error', 'Failed to share record');
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'In Queue': return '#856404';
-      case 'In Progress': return '#004085';
-      case 'Completed': return '#155724';
-      case 'On Hold': return '#721c24';
-      default: return '#333';
     }
   };
 
@@ -588,7 +572,7 @@ Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
                   >
                     <Text style={styles.dropdownMain}>{job.registration_number}</Text>
                     <Text style={styles.dropdownSub}>{job.customer_name ?? 'N/A'}</Text>
-                    <Text style={[styles.dropdownStatus, { color: getStatusColor(job.status) }]}>{job.status}</Text>
+                    <Text style={[styles.dropdownStatus, { color: getStatusTextColor(job.status) }]}>{job.status}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -612,7 +596,7 @@ Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
                 <View style={styles.billDivider} />
                 <Text style={styles.billLabel}>PARTS USED:</Text>
                 {Array.isArray(selectedJob.parts_used) && selectedJob.parts_used.length > 0 ? (
-                  selectedJob.parts_used.map((p: any, idx: number) => (
+                  selectedJob.parts_used.map((p: { name: string; quantity: number }, idx: number) => (
                     <Text key={idx} style={styles.partItem}>• {p.name}   Qty: {p.quantity}</Text>
                   ))
                 ) : <Text style={styles.partItem}>No parts recorded</Text>}

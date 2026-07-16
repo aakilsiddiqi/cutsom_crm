@@ -41,62 +41,41 @@ export const TeamScreen = () => {
   const [availableTechs, setAvailableTechs] = useState<UserProfile[]>([]);
   const [reassignToTechId, setReassignToTechId] = useState('');
 
-  const fetchTeamStats = async (isMounted: boolean = true) => {
+  const fetchTeamStats = async (signal: AbortSignal) => {
     try {
-      if (isMounted) setErrorOccurred(false);
-      // 1. Fetch all technicians
+      if (!signal.aborted) setErrorOccurred(false);
       const { data: techsData, error: techsError } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'user');
 
       if (techsError) throw techsError;
-
       const technicians = techsData as UserProfile[];
 
       if (technicians.length === 0) {
-        if (isMounted) setTeamStats([]);
+        if (!signal.aborted) setTeamStats([]);
         return;
       }
 
-      // First day of current month
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-      // 2. Batch fetch counts
       const statsPromises = technicians.map(async (tech) => {
         const [activeRes, completedRes] = await Promise.all([
-          supabase
-            .from('job_sheets')
-            .select('*', { count: 'exact', head: true })
-            .eq('assigned_to', tech.id)
-            .neq('status', 'Completed'),
-          supabase
-            .from('job_sheets')
-            .select('*', { count: 'exact', head: true })
-            .eq('assigned_to', tech.id)
-            .eq('status', 'Completed')
-            .gte('completed_at', firstDayOfMonth)
+          supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).neq('status', 'Completed'),
+          supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).eq('status', 'Completed').gte('completed_at', firstDayOfMonth),
         ]);
-
-        return {
-          ...tech,
-          activeJobs: activeRes.count || 0,
-          completedThisMonth: completedRes.count || 0,
-        };
+        return { ...tech, activeJobs: activeRes.count || 0, completedThisMonth: completedRes.count || 0 };
       });
 
       const results = await Promise.all(statsPromises);
-
-      // Sort by active jobs descending
       results.sort((a, b) => b.activeJobs - a.activeJobs);
 
-      if (isMounted) setTeamStats(results);
+      if (!signal.aborted) setTeamStats(results);
     } catch (error) {
-      console.error('Error fetching team stats:', error);
-      if (isMounted) setErrorOccurred(true);
+      if (!signal.aborted) setErrorOccurred(true);
     } finally {
-      if (isMounted) {
+      if (!signal.aborted) {
         setLoading(false);
         setRefreshing(false);
       }
@@ -105,15 +84,16 @@ export const TeamScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-      fetchTeamStats(isMounted);
-      return () => { isMounted = false; };
+      const ac = new AbortController();
+      fetchTeamStats(ac.signal);
+      return () => ac.abort();
     }, [])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchTeamStats(true);
+    const ac = new AbortController();
+    fetchTeamStats(ac.signal);
   }, []);
 
   const handleCall = (phone: string) => {
@@ -199,8 +179,7 @@ export const TeamScreen = () => {
         setReassignToTechId('');
         setReassignModalVisible(true);
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
       Alert.alert('Error', 'Failed to fetch active jobs.');
     }
   };
@@ -209,7 +188,8 @@ export const TeamScreen = () => {
     setLoading(true);
     await supabase.from('profiles').update({ is_active: false }).eq('id', techId);
     Alert.alert('✅ Technician Removed', `${name} has been deactivated.`);
-    fetchTeamStats();
+    const ac = new AbortController();
+    fetchTeamStats(ac.signal);
   };
 
   const handleReassignAndRemove = async () => {
@@ -242,9 +222,9 @@ export const TeamScreen = () => {
       const newTechName = availableTechs.find(t => t.id === reassignToTechId)?.full_name || 'the selected technician';
         
       Alert.alert('✅ Success', `Jobs reassigned to ${newTechName} and ${techToRemove.name} has been deactivated.`);
-      fetchTeamStats();
-    } catch (error) {
-      console.error(error);
+      const ac2 = new AbortController();
+      fetchTeamStats(ac2.signal);
+    } catch {
       Alert.alert('Error', 'Failed to complete the process.');
       setLoading(false);
     }

@@ -47,9 +47,8 @@ export const LoginScreen = () => {
       if (signInError) {
         setLoginError('Incorrect password. Please try again.');
       }
-    } catch (err) {
+    } catch {
       setLoginError('Something went wrong. Please try again.');
-      console.error(err);
     } finally {
       setLoading(false);
     }

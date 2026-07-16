@@ -11,6 +11,7 @@ CREATE TABLE public.profiles (
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
   phone TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -24,6 +25,15 @@ RETURNS boolean AS $$
     SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
   );
 $$ LANGUAGE sql SECURITY DEFINER;
+
+-- Username → email lookup for login
+CREATE OR REPLACE FUNCTION public.get_user_email_by_username(p_username TEXT)
+RETURNS TEXT
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  SELECT email FROM public.profiles WHERE LOWER(username) = LOWER(p_username);
+$$;
 
 -- Profiles Policies
 CREATE POLICY "Profiles are viewable by all authenticated users"
@@ -51,6 +61,9 @@ CREATE TABLE public.job_sheets (
   status TEXT NOT NULL DEFAULT 'In Queue' CHECK (status IN ('In Queue', 'In Progress', 'Completed', 'On Hold')),
   assigned_to UUID REFERENCES public.profiles(id),
   admin_instructions TEXT,
+  service_location TEXT DEFAULT 'Workshop' CHECK (service_location IN ('Workshop', 'On-Site')),
+  serial_number TEXT,
+  priority TEXT DEFAULT 'Normal' CHECK (priority IN ('Normal', 'Urgent')),
   parts_needed TEXT[],
   parts_used JSONB,
   photos TEXT[],
@@ -171,3 +184,34 @@ CREATE POLICY "Users can update their own uploaded photos or admin"
 CREATE POLICY "Users can delete their own uploaded photos or admin"
   ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'machine_photos' AND (auth.uid() = owner OR public.is_admin()));
+
+-- ==========================================
+-- 5. JOB UPDATES VIEW (with profile names)
+-- ==========================================
+CREATE OR REPLACE VIEW public.job_updates_with_profile
+WITH (security_invoker = true)
+AS
+SELECT
+  ju.id,
+  ju.job_sheet_id,
+  ju.update_note,
+  ju.status_changed_to,
+  ju.created_at,
+  ju.updated_by,
+  p.full_name AS updated_by_name,
+  p.id AS updated_by_id
+FROM public.job_updates ju
+LEFT JOIN public.profiles p ON p.id = ju.updated_by;
+
+GRANT SELECT ON public.job_updates_with_profile TO authenticated;
+GRANT SELECT ON public.job_updates_with_profile TO anon;
+
+-- ==========================================
+-- 6. PERFORMANCE INDEXES
+-- ==========================================
+CREATE INDEX IF NOT EXISTS idx_job_sheets_assigned_to ON public.job_sheets(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_status ON public.job_sheets(status);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_assigned_to_status ON public.job_sheets(assigned_to, status);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_created_at ON public.job_sheets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_job_updates_job_sheet_id ON public.job_updates(job_sheet_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);

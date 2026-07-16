@@ -16,6 +16,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { RootStackParamList, JobSheet, JobUpdate } from '../../types';
 import { navigateBack } from '../../utils/navigationUtils';
+import { getStatusColors } from '../../utils/constants';
+import { formatDate, timeAgo } from '../../utils/formatting';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'JobSheetDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'JobSheetDetail'>;
@@ -33,22 +35,17 @@ export const JobSheetDetailScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const fetchJobDetails = async (isMounted: boolean = true) => {
+  const fetchJobDetails = async (signal: AbortSignal) => {
     try {
-      if (isMounted) setLoading(true);
-      // Fetch Job Sheet
+      if (!signal.aborted) setLoading(true);
       const { data: jobData, error: jobError } = await supabase
         .from('job_sheets')
-        .select(`
-          *,
-          assignee:profiles!job_sheets_assigned_to_fkey(*)
-        `)
+        .select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*)`)
         .eq('id', jobSheetId)
         .single();
 
       if (jobError) throw jobError;
       
-      // Fetch Job Updates (Activity Log) using the new view
       const { data: updatesData, error: updatesError } = await supabase
         .from('job_updates_with_profile')
         .select('*')
@@ -57,56 +54,23 @@ export const JobSheetDetailScreen = () => {
 
       if (updatesError) throw updatesError;
 
-      if (isMounted) {
+      if (!signal.aborted) {
         setJobSheet(jobData as JobSheet);
         setJobUpdates(updatesData as JobUpdate[]);
       }
     } catch (error) {
-      console.error('Error fetching job details:', error);
     } finally {
-      if (isMounted) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      let isMounted = true;
-      fetchJobDetails(isMounted);
-      return () => { isMounted = false; };
+      const ac = new AbortController();
+      fetchJobDetails(ac.signal);
+      return () => ac.abort();
     }, [jobSheetId])
   );
-
-  const getStatusColors = (status: string) => {
-    switch (status) {
-      case 'In Queue': return { bg: '#FFF3CD', text: '#856404' };
-      case 'In Progress': return { bg: '#CCE5FF', text: '#004085' };
-      case 'Completed': return { bg: '#D4EDDA', text: '#155724' };
-      case 'On Hold': return { bg: '#F8D7DA', text: '#721c24' };
-      default: return { bg: '#e2e3e5', text: '#383d41' };
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true
-    };
-    return new Intl.DateTimeFormat('en-GB', options).format(date);
-  };
-
-  const timeAgo = (dateString: string) => {
-    const now = new Date().getTime();
-    const past = new Date(dateString).getTime();
-    const diffMs = now - past;
-    const diffMins = Math.round(diffMs / 60000);
-    const diffHours = Math.round(diffMins / 60);
-    const diffDays = Math.round(diffHours / 24);
-
-    if (diffMins < 60) return `${diffMins} mins ago`;
-    if (diffHours < 24) return `${diffHours} hours ago`;
-    return `${diffDays} days ago`;
-  };
 
   const handleCall = (phone: string) => {
     Linking.openURL(`tel:${phone}`);
