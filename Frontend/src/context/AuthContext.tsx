@@ -1,7 +1,12 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import { View, AppState, Platform } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase';
 import { UserProfile } from '../types';
+import { SessionWarningModal } from '../components/SessionWarningModal';
+
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+const WARNING_DURATION_MS = 30 * 1000;
 
 type AuthContextType = {
   session: Session | null;
@@ -10,6 +15,8 @@ type AuthContextType = {
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
   updateProfile: (updated: Partial<UserProfile>) => void;
+  continueSession: () => void;
+  warningVisible: boolean;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +26,8 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   fetchProfile: async () => {},
   updateProfile: () => {},
+  continueSession: () => {},
+  warningVisible: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -27,6 +36,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [warningVisible, setWarningVisible] = useState(false);
+
+  const lastActivityRef = useRef(Date.now());
+  const warningVisibleRef = useRef(false);
+  const signOutRef = useRef<() => Promise<void>>(async () => {});
+  const resetActivityRef = useRef<() => void>(() => {});
+
+  warningVisibleRef.current = warningVisible;
+
+  const clearSessionTimer = useCallback(() => {
+    setWarningVisible(false);
+  }, []);
+
+  const resetActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    clearSessionTimer();
+  }, [clearSessionTimer]);
+
+  const continueSession = useCallback(() => {
+    resetActivity();
+  }, [resetActivity]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,33 +85,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    clearSessionTimer();
     try {
       await supabase.auth.signOut();
-      setSession(null);
-      setProfile(null);
     } catch (error) {
       console.error('Sign out error:', error);
-      setSession(null);
-      setProfile(null);
     }
-  };
+    setSession(null);
+    setProfile(null);
+  }, [clearSessionTimer]);
 
   const fetchProfile = async (userId: string) => {
     try {
       setLoading(true);
-      console.log('Fetching profile for userId:', userId);
-
-      // First attempt
       let { data, error } = await supabase
         .from('profiles')
         .select('id, username, email, full_name, role, phone')
         .eq('id', userId)
         .single();
 
-      // Retry logic for mobile/slow connections
       if (error || !data) {
-        console.log('Profile fetch attempt 1 failed, retrying in 1s...', error);
         await new Promise(resolve => setTimeout(resolve, 1000));
         const retry = await supabase
           .from('profiles')
@@ -91,9 +115,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data = retry.data;
         error = retry.error;
       }
-
-      console.log('Profile result:', data);
-      console.log('Profile error:', error);
 
       if (error || !data) {
         setProfile(null);
@@ -112,9 +133,86 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(prev => prev ? { ...prev, ...updated } as UserProfile : null);
   };
 
+  signOutRef.current = signOut;
+  resetActivityRef.current = resetActivity;
+
+  // Session timeout check interval
+  useEffect(() => {
+    if (!session) return;
+
+    lastActivityRef.current = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastActivityRef.current;
+
+      if (elapsed >= SESSION_TIMEOUT_MS) {
+        signOutRef.current?.();
+        return;
+      }
+
+      const inWarning = elapsed >= SESSION_TIMEOUT_MS - WARNING_DURATION_MS;
+      if (inWarning && !warningVisibleRef.current) {
+        setWarningVisible(true);
+      } else if (!inWarning && warningVisibleRef.current) {
+        setWarningVisible(false);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [session]);
+
+  // AppState listener (mobile background/foreground)
+  useEffect(() => {
+    if (!session) return;
+
+    const handleAppState = (nextState: string) => {
+      if (nextState === 'active' && Date.now() - lastActivityRef.current >= SESSION_TIMEOUT_MS) {
+        signOutRef.current?.();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppState);
+    return () => subscription.remove();
+  }, [session]);
+
+  // Web visibility + keyboard listeners
+  useEffect(() => {
+    if (!session || Platform.OS !== 'web') return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastActivityRef.current >= SESSION_TIMEOUT_MS) {
+        signOutRef.current?.();
+      }
+    };
+
+    const handleInteraction = () => {
+      resetActivityRef.current?.();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('keydown', handleInteraction);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('keydown', handleInteraction);
+    };
+  }, [session]);
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signOut, fetchProfile, updateProfile }}>
-      {children}
+    <AuthContext.Provider value={{
+      session, profile, loading, signOut, fetchProfile, updateProfile,
+      continueSession, warningVisible,
+    }}>
+      <View
+        style={{ flex: 1 }}
+        onPointerDown={() => resetActivityRef.current?.()}
+      >
+        {children}
+      </View>
+      <SessionWarningModal
+        visible={warningVisible}
+        onContinue={continueSession}
+      />
     </AuthContext.Provider>
   );
 };

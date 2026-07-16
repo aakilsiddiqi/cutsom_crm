@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { supabase } from '../services/supabase';
 import { JobSheet } from '../types';
+import { STATUS_OPTIONS } from '../utils/constants';
 
 interface QuickStatusModalProps {
   visible: boolean;
@@ -24,14 +25,7 @@ interface QuickStatusModalProps {
   onStatusUpdate: (jobSheetId: string, newStatus: string) => void;
 }
 
-const STATUS_OPTIONS = [
-  { label: 'In Queue', value: 'In Queue', color: '#FFF3CD', border: '#ffeeba', text: '#856404' },
-  { label: 'In Progress', value: 'In Progress', color: '#CCE5FF', border: '#b8daff', text: '#004085' },
-  { label: 'Completed', value: 'Completed', color: '#D4EDDA', border: '#c3e6cb', text: '#155724' },
-  { label: 'On Hold', value: 'On Hold', color: '#F8D7DA', border: '#f5c6cb', text: '#721c24' }
-];
-
-export const QuickStatusModal: React.FC<QuickStatusModalProps> = ({
+export const QuickStatusModal: React.FC<QuickStatusModalProps> = memo(({
   visible,
   jobSheet,
   onClose,
@@ -83,7 +77,7 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = ({
     const executeUpdate = async () => {
       setLoading(true);
       try {
-        const updateData: any = { status: selectedStatus };
+        const updateData: Record<string, unknown> = { status: selectedStatus };
         
         if (selectedStatus === 'Completed') {
           updateData.completed_at = new Date().toISOString();
@@ -221,7 +215,7 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = ({
       </TouchableWithoutFeedback>
     </Modal>
   );
-};
+});
 
 const styles = StyleSheet.create({
   backdrop: {

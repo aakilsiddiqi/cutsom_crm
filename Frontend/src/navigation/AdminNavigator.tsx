@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, View } from 'react-native';
 
+import { withErrorBoundary } from '../components/ErrorBoundary';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { AllJobsScreen } from '../screens/admin/AllJobsScreen';
 import { TeamScreen } from '../screens/admin/TeamScreen';
@@ -35,26 +36,10 @@ const AdminTabNavigator = () => (
       },
     }}
   >
-    <Tab.Screen
-      name="Dashboard"
-      component={AdminDashboardScreen}
-      options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📊</Text> }}
-    />
-    <Tab.Screen
-      name="All Jobs"
-      component={AllJobsScreen}
-      options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📋</Text> }}
-    />
-    <Tab.Screen
-      name="Team"
-      component={TeamScreen}
-      options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text> }}
-    />
-    <Tab.Screen
-      name="Reports"
-      component={ReportsScreen}
-      options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📈</Text> }}
-    />
+    <Tab.Screen name="Dashboard" component={withErrorBoundary(AdminDashboardScreen)} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📊</Text> }} />
+    <Tab.Screen name="All Jobs" component={withErrorBoundary(AllJobsScreen)} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📋</Text> }} />
+    <Tab.Screen name="Team" component={withErrorBoundary(TeamScreen)} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text> }} />
+    <Tab.Screen name="Reports" component={withErrorBoundary(ReportsScreen)} options={{ tabBarIcon: () => <Text style={{ fontSize: 20 }}>📈</Text> }} />
   </Tab.Navigator>
 );
 
@@ -62,10 +47,10 @@ const AdminTabNavigator = () => (
 export const AdminNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="AdminTabs" component={AdminTabNavigator} />
-    <Stack.Screen name="JobDetailAdminScreen" component={JobDetailAdminScreen} />
-    <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-    <Stack.Screen name="AddTechnician" component={AddTechnicianScreen} />
-    <Stack.Screen name="CreateJobSheet" component={CreateJobSheetScreen} />
+    <Stack.Screen name="JobDetailAdminScreen" component={withErrorBoundary(JobDetailAdminScreen)} />
+    <Stack.Screen name="Settings" component={withErrorBoundary(SettingsScreen)} />
+    <Stack.Screen name="EditProfile" component={withErrorBoundary(EditProfileScreen)} />
+    <Stack.Screen name="AddTechnician" component={withErrorBoundary(AddTechnicianScreen)} />
+    <Stack.Screen name="CreateJobSheet" component={withErrorBoundary(CreateJobSheetScreen)} />
   </Stack.Navigator>
 );

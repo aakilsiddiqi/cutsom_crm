@@ -14,9 +14,10 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
-import { AdminStackParamList, JobSheet } from '../../types';
+import { AdminStackParamList, JobSheet, JobSheetStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getGreeting, getGreetingEmoji } from '../../utils/greetingUtils';
+import { getStatusColors } from '../../utils/constants';
 import { JobSheetCard } from '../../components/JobSheetCard';
 import { QuickStatusModal } from '../../components/QuickStatusModal';
 
@@ -33,16 +34,8 @@ export const AdminDashboardScreen = () => {
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('Today');
 
   const { profile } = useAuth();
-  const [greeting, setGreeting] = useState(getGreeting());
-  const [greetingEmoji, setGreetingEmoji] = useState(getGreetingEmoji());
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGreeting(getGreeting());
-      setGreetingEmoji(getGreetingEmoji());
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  const greeting = getGreeting();
+  const greetingEmoji = getGreetingEmoji();
 
   const [metrics, setMetrics] = useState({
     totalToday: 0,
@@ -53,25 +46,22 @@ export const AdminDashboardScreen = () => {
     totalThisMonth: 0,
   });
 
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<JobSheet[]>([]);
 
   // Quick Status Modal
   const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
-  const fetchDashboardData = async (isMounted: boolean = true) => {
+  const fetchDashboardData = async (signal: AbortSignal) => {
     try {
-      if (isMounted) setErrorOccurred(false);
+      if (!signal.aborted) setErrorOccurred(false);
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
       const startOfWeek = new Date(today);
       const day = startOfWeek.getDay();
       const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
       startOfWeek.setDate(diff);
-
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
       const quarter = Math.floor(now.getMonth() / 3);
       const startOfQuarter = new Date(now.getFullYear(), quarter * 3, 1);
 
@@ -80,42 +70,42 @@ export const AdminDashboardScreen = () => {
       if (selectedFilter === 'This Month') filterDate = startOfMonth;
       if (selectedFilter === 'This Quarter') filterDate = startOfQuarter;
 
-      const minDate = filterDate < startOfMonth ? filterDate : startOfMonth;
-      const minIso = minDate.toISOString();
       const filterIso = filterDate.toISOString();
       const monthIso = startOfMonth.toISOString();
 
-      const { data: allJobs, error } = await supabase
-        .from('job_sheets')
-        .select('*, assignee:profiles!job_sheets_assigned_to_fkey(*)')
-        .gte('entry_date_time', minIso);
+      const [{ data: allJobs, error }, { count: monthCount, error: monthError }] = await Promise.all([
+        supabase
+          .from('job_sheets')
+          .select('*, assignee:profiles!job_sheets_assigned_to_fkey(*)')
+          .gte('entry_date_time', filterIso),
+        supabase
+          .from('job_sheets')
+          .select('*', { count: 'exact', head: true })
+          .gte('entry_date_time', monthIso),
+      ]);
 
       if (error) throw error;
+      if (monthError) throw monthError;
 
-      if (isMounted) {
-        const filterJobs = allJobs?.filter(j => new Date(j.entry_date_time) >= new Date(filterIso)) || [];
-        const monthJobs = allJobs?.filter(j => new Date(j.entry_date_time) >= new Date(monthIso)) || [];
-
+      if (!signal.aborted) {
         setMetrics({
-          totalToday: filterJobs.length,
-          inQueue: filterJobs.filter(j => j.status === 'In Queue').length,
-          inProgress: filterJobs.filter(j => j.status === 'In Progress').length,
-          completed: filterJobs.filter(j => j.status === 'Completed').length,
-          onHold: filterJobs.filter(j => j.status === 'On Hold').length,
-          totalThisMonth: monthJobs.length,
+          totalToday: allJobs?.length || 0,
+          inQueue: allJobs?.filter(j => j.status === 'In Queue').length || 0,
+          inProgress: allJobs?.filter(j => j.status === 'In Progress').length || 0,
+          completed: allJobs?.filter(j => j.status === 'Completed').length || 0,
+          onHold: allJobs?.filter(j => j.status === 'On Hold').length || 0,
+          totalThisMonth: monthCount || 0,
         });
 
-        const sortedActivity = [...filterJobs]
+        const sortedActivity = [...(allJobs || [])]
           .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
           .slice(0, 10);
-          
         setRecentActivity(sortedActivity);
       }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      if (isMounted) setErrorOccurred(true);
+      if (!signal.aborted) setErrorOccurred(true);
     } finally {
-      if (isMounted) {
+      if (!signal.aborted) {
         setLoading(false);
         setRefreshing(false);
       }
@@ -123,14 +113,15 @@ export const AdminDashboardScreen = () => {
   };
 
   useEffect(() => {
-    let isMounted = true;
-    fetchDashboardData(isMounted);
-    return () => { isMounted = false; };
+    const ac = new AbortController();
+    fetchDashboardData(ac.signal);
+    return () => ac.abort();
   }, [selectedFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchDashboardData(true);
+    const ac = new AbortController();
+    fetchDashboardData(ac.signal);
   }, [selectedFilter]);
 
   const handleLogout = () => {
@@ -159,41 +150,11 @@ export const AdminDashboardScreen = () => {
   const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
     setRecentActivity((prev) =>
       prev.map((job) =>
-        job.id === jobSheetId ? { ...job, status: newStatus } : job
+        job.id === jobSheetId ? { ...job, status: newStatus as JobSheetStatus } : job
       )
     );
-    // Refresh metrics without full loading
-    fetchDashboardData(true);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'In Queue': return '#FFF3CD';
-      case 'In Progress': return '#CCE5FF';
-      case 'Completed': return '#D4EDDA';
-      case 'On Hold': return '#F8D7DA';
-      default: return '#eee';
-    }
-  };
-
-  const getStatusTextColor = (status: string) => {
-    switch (status) {
-      case 'In Queue': return '#856404';
-      case 'In Progress': return '#004085';
-      case 'Completed': return '#155724';
-      case 'On Hold': return '#721c24';
-      default: return '#333';
-    }
-  };
-
-  const timeAgo = (dateString: string) => {
-    const diffMs = new Date().getTime() - new Date(dateString).getTime();
-    const mins = Math.round(diffMs / 60000);
-    const hrs = Math.round(mins / 60);
-    const days = Math.round(hrs / 24);
-    if (mins < 60) return `${mins} mins ago`;
-    if (hrs < 24) return `${hrs} hours ago`;
-    return `${days} days ago`;
+    const ac = new AbortController();
+    fetchDashboardData(ac.signal);
   };
 
   const todayStr = new Intl.DateTimeFormat('en-GB', {

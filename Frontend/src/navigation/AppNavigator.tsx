@@ -6,6 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { RootStackParamList } from '../types';
 import { useAuth } from '../context/AuthContext';
 
+import { withErrorBoundary } from '../components/ErrorBoundary';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AdminNavigator } from './AdminNavigator';
 import { UserDashboardScreen } from '../screens/user/UserDashboardScreen';
@@ -65,54 +66,17 @@ export const AppNavigator = () => {
       <Stack.Navigator>
         {!session || !profile ? (
           // Auth Stack
-          <Stack.Screen name="Auth" component={LoginScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Auth" component={withErrorBoundary(LoginScreen)} options={{ headerShown: false }} />
         ) : profile.role === 'admin' ? (
-          // Admin Stack
           <Stack.Screen name="AdminNavigator" component={AdminNavigator} options={{ headerShown: false }} />
         ) : (
-          // User Stack
           <>
-            <Stack.Screen name="UserDashboard" component={UserDashboardScreen} options={{ headerShown: false }} />
-            <Stack.Screen 
-              name="Settings" 
-              component={SettingsScreen} 
-              options={{ headerShown: false }} 
-            />
-            <Stack.Screen 
-              name="EditProfile" 
-              component={EditProfileScreen} 
-              options={{ headerShown: false }} 
-            />
-            <Stack.Screen 
-              name="CreateJobSheet" 
-              component={CreateJobSheetScreen} 
-              options={{ 
-                headerTitle: 'New Job Sheet',
-                headerStyle: { backgroundColor: '#ffcc00' },
-                headerTintColor: '#000',
-                headerBackTitle: ''
-              }} 
-            />
-            <Stack.Screen 
-              name="JobSheetDetail" 
-              component={JobSheetDetailScreen} 
-              options={{ 
-                headerTitle: 'Job Details',
-                headerStyle: { backgroundColor: '#ffcc00' },
-                headerTintColor: '#000',
-                headerBackTitle: ''
-              }} 
-            />
-            <Stack.Screen 
-              name="EditJobSheet" 
-              component={EditJobSheetScreen} 
-              options={{ 
-                headerTitle: 'Edit Job',
-                headerStyle: { backgroundColor: '#ffcc00' },
-                headerTintColor: '#000',
-                headerBackTitle: ''
-              }} 
-            />
+            <Stack.Screen name="UserDashboard" component={withErrorBoundary(UserDashboardScreen)} options={{ headerShown: false }} />
+            <Stack.Screen name="Settings" component={withErrorBoundary(SettingsScreen)} options={{ headerShown: false }} />
+            <Stack.Screen name="EditProfile" component={withErrorBoundary(EditProfileScreen)} options={{ headerShown: false }} />
+            <Stack.Screen name="CreateJobSheet" component={withErrorBoundary(CreateJobSheetScreen)} options={{ headerTitle: 'New Job Sheet', headerStyle: { backgroundColor: '#ffcc00' }, headerTintColor: '#000', headerBackTitle: '' }} />
+            <Stack.Screen name="JobSheetDetail" component={withErrorBoundary(JobSheetDetailScreen)} options={{ headerTitle: 'Job Details', headerStyle: { backgroundColor: '#ffcc00' }, headerTintColor: '#000', headerBackTitle: '' }} />
+            <Stack.Screen name="EditJobSheet" component={withErrorBoundary(EditJobSheetScreen)} options={{ headerTitle: 'Edit Job', headerStyle: { backgroundColor: '#ffcc00' }, headerTintColor: '#000', headerBackTitle: '' }} />
           </>
         )}
       </Stack.Navigator>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Image, Modal, SafeAreaView, TextInput, Alert 
 } from 'react-native';
@@ -10,6 +10,8 @@ import { supabase } from '../../services/supabase';
 import { AdminStackParamList, JobSheet, JobUpdate, UserProfile, JobSheetStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { navigateBack } from '../../utils/navigationUtils';
+import { getStatusColors } from '../../utils/constants';
+import { formatDate, timeAgo } from '../../utils/formatting';
 
 type DetailRouteProp = RouteProp<AdminStackParamList, 'JobDetailAdminScreen'>;
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'JobDetailAdminScreen'>;
@@ -42,9 +44,9 @@ export const JobDetailAdminScreen = () => {
   // Status update
   const [statusNote, setStatusNote] = useState('');
 
-  const fetchJobDetails = async (isMounted: boolean = true) => {
+  const fetchJobDetails = async (signal: AbortSignal) => {
     try {
-      if (isMounted) setLoading(true);
+      if (!signal.aborted) setLoading(true);
       const { data: jobData, error: jobError } = await supabase
         .from('job_sheets')
         .select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*), creator:profiles!job_sheets_created_by_fkey(*)`)
@@ -61,23 +63,22 @@ export const JobDetailAdminScreen = () => {
 
       if (updatesError) throw updatesError;
 
-      if (isMounted) {
+      if (!signal.aborted) {
         setJobSheet(jobData as JobSheet);
         setAdminInstructionsText(jobData.admin_instructions || '');
         setJobUpdates(updatesData as JobUpdate[]);
       }
     } catch (error) {
-      console.error('Error fetching job details:', error);
     } finally {
-      if (isMounted) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      let isMounted = true;
-      fetchJobDetails(isMounted);
-      return () => { isMounted = false; };
+      const ac = new AbortController();
+      fetchJobDetails(ac.signal);
+      return () => ac.abort();
     }, [jobSheetId])
   );
 
@@ -97,7 +98,8 @@ export const JobDetailAdminScreen = () => {
       });
 
       setEditingInstructions(false);
-      fetchJobDetails();
+      const ac = new AbortController();
+      fetchJobDetails(ac.signal);
       Alert.alert('✅ Instructions Saved', 'Instructions have been sent to the technician.');
     } catch (e) {
       Alert.alert('Error', 'Failed to save instructions');
@@ -131,7 +133,8 @@ export const JobDetailAdminScreen = () => {
       });
 
       setReassignModalVisible(false);
-      fetchJobDetails();
+      const ac1 = new AbortController();
+      fetchJobDetails(ac1.signal);
       Alert.alert('✅ Reassigned Successfully', `Job sheet has been reassigned to ${tech.full_name || tech.username}.`);
     } catch (e) {
       Alert.alert('Error', 'Failed to reassign');
@@ -143,7 +146,7 @@ export const JobDetailAdminScreen = () => {
     
     const executeUpdate = async () => {
       try {
-        const updatePayload: any = { status: newStatus };
+        const updatePayload: Record<string, unknown> = { status: newStatus };
         
         if (newStatus === 'Completed') {
           const completedAt = new Date().toISOString();
@@ -167,7 +170,8 @@ export const JobDetailAdminScreen = () => {
 
         setStatusModalVisible(false);
         setStatusNote('');
-        fetchJobDetails();
+        const ac2 = new AbortController();
+        fetchJobDetails(ac2.signal);
         Alert.alert('✅ Status Updated', `Status changed to "${newStatus}" successfully.`);
       } catch (e) {
         Alert.alert('Error', 'Failed to update status');
@@ -229,35 +233,6 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
     } catch (e) {
       Alert.alert('Error', 'Failed to share record');
     }
-  };
-
-  const getStatusColors = (status: string) => {
-    switch (status) {
-      case 'In Queue': return { bg: '#FFF3CD', text: '#856404' };
-      case 'In Progress': return { bg: '#CCE5FF', text: '#004085' };
-      case 'Completed': return { bg: '#D4EDDA', text: '#155724' };
-      case 'On Hold': return { bg: '#F8D7DA', text: '#721c24' };
-      default: return { bg: '#e2e3e5', text: '#383d41' };
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true
-    };
-    return new Intl.DateTimeFormat('en-GB', options).format(date);
-  };
-
-  const timeAgo = (dateString: string) => {
-    const diffMs = new Date().getTime() - new Date(dateString).getTime();
-    const mins = Math.round(diffMs / 60000);
-    const hrs = Math.round(mins / 60);
-    const days = Math.round(hrs / 24);
-    if (mins < 60) return `${mins} mins ago`;
-    if (hrs < 24) return `${hrs} hours ago`;
-    return `${days} days ago`;
   };
 
   if (loading || !jobSheet) {

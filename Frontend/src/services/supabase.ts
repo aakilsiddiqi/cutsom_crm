@@ -69,7 +69,7 @@ export const getPhotoUrl = (filePath: string): string => {
   const { data } = supabase.storage
     .from(STORAGE_BUCKETS.MACHINE_PHOTOS)
     .getPublicUrl(filePath);
-  return data.publicUrl;
+  return data?.publicUrl ?? '';
 };
 
 /**

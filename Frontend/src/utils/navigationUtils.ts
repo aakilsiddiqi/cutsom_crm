@@ -1,7 +1,14 @@
-import { CommonActions, NavigationProp } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { Platform } from 'react-native';
 
-export const navigateToDashboard = (navigation: any, role: 'admin' | 'user') => {
+type Navigation = {
+  dispatch: (action: ReturnType<typeof CommonActions.reset | typeof CommonActions.navigate | typeof CommonActions.goBack>) => void;
+  navigate: (name: string) => void;
+  canGoBack: () => boolean;
+  goBack: () => void;
+};
+
+export const navigateToDashboard = (navigation: Navigation, role: 'admin' | 'user') => {
   if (role === 'admin') {
     if (Platform.OS === 'web') {
       navigation.dispatch(
@@ -33,7 +40,7 @@ export const navigateToDashboard = (navigation: any, role: 'admin' | 'user') => 
   }
 };
 
-export const navigateToJobDetail = (navigation: any, role: 'admin' | 'user', jobSheetId: string) => {
+export const navigateToJobDetail = (navigation: Navigation, role: 'admin' | 'user', jobSheetId: string) => {
   if (role === 'admin') {
     navigation.dispatch(
       CommonActions.navigate({
@@ -51,7 +58,7 @@ export const navigateToJobDetail = (navigation: any, role: 'admin' | 'user', job
   }
 };
 
-export const navigateBack = (navigation: any) => {
+export const navigateBack = (navigation: Navigation) => {
   if (navigation.canGoBack()) {
     navigation.goBack();
   } else {

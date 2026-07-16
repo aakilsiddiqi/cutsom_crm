@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { JobSheet } from '../types';
+import { getStatusColors } from '../utils/constants';
+import { formatDate } from '../utils/formatting';
 
 interface Props {
   jobSheet: JobSheet;
@@ -9,27 +11,8 @@ interface Props {
   onQuickStatusPress?: () => void;
 }
 
-export const JobSheetCard: React.FC<Props> = ({ jobSheet, onPress, onQuickStatusPress }) => {
-  const getStatusColors = (status: string) => {
-    switch (status) {
-      case 'In Queue': return { bg: '#FFF3CD', text: '#856404' };
-      case 'In Progress': return { bg: '#CCE5FF', text: '#004085' };
-      case 'Completed': return { bg: '#D4EDDA', text: '#155724' };
-      case 'On Hold': return { bg: '#F8D7DA', text: '#721c24' };
-      default: return { bg: '#e2e3e5', text: '#383d41' };
-    }
-  };
-
+export const JobSheetCard: React.FC<Props> = memo(({ jobSheet, onPress, onQuickStatusPress }) => {
   const statusColors = getStatusColors(jobSheet.status);
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true
-    };
-    return new Intl.DateTimeFormat('en-GB', options).format(date);
-  };
 
   return (
     <TouchableOpacity 
@@ -105,7 +88,7 @@ export const JobSheetCard: React.FC<Props> = ({ jobSheet, onPress, onQuickStatus
       </View>
     </TouchableOpacity>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {

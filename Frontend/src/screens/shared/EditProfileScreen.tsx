@@ -86,9 +86,9 @@ export const EditProfileScreen = () => {
         'Your profile has been saved successfully.',
         [{ text: 'OK', onPress: () => navigateBack(navigation) }]
       );
-    } catch (error: any) {
-      console.error('Error updating profile:', error);
-      Alert.alert('Error', error.message || 'Failed to update profile.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update profile.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

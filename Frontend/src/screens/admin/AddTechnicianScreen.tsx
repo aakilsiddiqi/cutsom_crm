@@ -163,9 +163,9 @@ export const AddTechnicianScreen = () => {
         `${fullName} can now login with their email and password.`,
         [{ text: 'OK', onPress: () => navigateToDashboard(navigation, 'admin') }]
       );
-    } catch (error: any) {
-      console.error('Error creating technician:', error);
-      Alert.alert('Error', error.message || 'Failed to create account. Please try again.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

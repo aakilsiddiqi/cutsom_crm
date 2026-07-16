@@ -39,25 +39,16 @@ export const UserDashboardScreen = () => {
   const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
-  const [greeting, setGreeting] = useState(getGreeting());
-  const [greetingEmoji, setGreetingEmoji] = useState(getGreetingEmoji());
+  const greeting = getGreeting();
+  const greetingEmoji = getGreetingEmoji();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGreeting(getGreeting());
-      setGreetingEmoji(getGreetingEmoji());
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchDashboardData = async (isMounted: boolean = true) => {
+  const fetchDashboardData = async (signal: AbortSignal) => {
     try {
       setErrorOccurred(false);
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) return;
 
-      // Fetch Profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -66,27 +57,22 @@ export const UserDashboardScreen = () => {
       
       if (profileError) throw profileError;
 
-      // Fetch Job Sheets (assigned to OR created by)
       const { data: jobs, error } = await supabase
         .from('job_sheets')
-        .select(`
-          *,
-          assignee:profiles!job_sheets_assigned_to_fkey(*)
-        `)
+        .select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*)`)
         .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
-      if (isMounted) {
+      if (!signal.aborted) {
         if (profile) setUserProfile(profile as UserProfile);
         if (jobs) setJobSheets(jobs as JobSheet[]);
       }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      if (isMounted) setErrorOccurred(true);
+      if (!signal.aborted) setErrorOccurred(true);
     } finally {
-      if (isMounted) {
+      if (!signal.aborted) {
         setLoading(false);
         setRefreshing(false);
       }
@@ -95,15 +81,16 @@ export const UserDashboardScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-      fetchDashboardData(isMounted);
-      return () => { isMounted = false; };
+      const ac = new AbortController();
+      fetchDashboardData(ac.signal);
+      return () => ac.abort();
     }, [])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDashboardData();
+    const ac = new AbortController();
+    fetchDashboardData(ac.signal);
   };
 
   const handleLogout = () => {
@@ -134,6 +121,17 @@ export const UserDashboardScreen = () => {
       )
     );
   };
+
+  const renderJobItem = useCallback(({ item }: { item: JobSheet }) => (
+    <JobSheetCard
+      jobSheet={item}
+      onPress={() => navigation.navigate('JobSheetDetail', { jobSheetId: item.id })}
+      onQuickStatusPress={() => {
+        setSelectedJobSheet(item);
+        setQuickStatusModalVisible(true);
+      }}
+    />
+  ), [navigation]);
 
   // Metrics
   const activeJobsCount = jobSheets.filter(j => j.status !== 'Completed').length;
@@ -238,22 +236,16 @@ export const UserDashboardScreen = () => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FFD700']} tintColor="#FFD700" />
           }
+          removeClippedSubviews
+          maxToRenderPerBatch={10}
+          windowSize={7}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>🔧</Text>
               <Text style={styles.emptyText}>No job sheets found.</Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <JobSheetCard 
-              jobSheet={item} 
-              onPress={() => navigation.navigate('JobSheetDetail', { jobSheetId: item.id })}
-              onQuickStatusPress={() => {
-                setSelectedJobSheet(item);
-                setQuickStatusModalVisible(true);
-              }}
-            />
-          )}
+          renderItem={renderJobItem}
         />
       )}
 

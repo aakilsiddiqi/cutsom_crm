@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { supabase } from '../../services/supabase';
 import { AdminStackParamList, JobSheetStatus, JobSheet } from '../../types';
 import { JobSheetCard } from '../../components/JobSheetCard';
 import { QuickStatusModal } from '../../components/QuickStatusModal';
+import { parseDateString } from '../../utils/formatting';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AdminTabs'>;
 
@@ -26,7 +27,7 @@ export const AllJobsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<JobSheet[]>([]);
   const [errorOccurred, setErrorOccurred] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -45,58 +46,39 @@ export const AllJobsScreen = () => {
   const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
 
-  const parseDate = (dStr: string, isEnd: boolean): string | null => {
-    const parts = dStr.split('/');
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      const date = new Date(year, month, day);
-      if (isEnd) {
-        date.setHours(23, 59, 59, 999);
-      }
-      return date.toISOString();
-    }
-    return null;
-  };
-
-  const fetchJobs = async (pageNumber: number, isRefresh: boolean = false, isMounted: boolean = true) => {
+  const fetchJobs = async (pageNumber: number, isRefresh: boolean = false, signal: AbortSignal) => {
     try {
-      if (isMounted) setErrorOccurred(false);
+      if (!signal.aborted) setErrorOccurred(false);
       if (isRefresh) {
-        if (isMounted) setLoading(true);
+        if (!signal.aborted) setLoading(true);
       } else {
-        if (isMounted) setLoadingMore(true);
+        if (!signal.aborted) setLoadingMore(true);
       }
 
       let query = supabase
         .from('job_sheets')
         .select('*, assignee:profiles!job_sheets_assigned_to_fkey(full_name)', { count: 'exact' });
 
-      // Apply Search (ilike on reg, name, mobile)
       if (searchQuery.trim()) {
         const searchTerms = `%${searchQuery.trim()}%`;
         query = query.or(`registration_number.ilike.${searchTerms},customer_name.ilike.${searchTerms},customer_mobile.ilike.${searchTerms}`);
       }
 
-      // Apply Status/Priority
       if (statusFilter === 'Urgent') {
         query = query.eq('priority', 'Urgent');
       } else if (statusFilter !== 'All') {
         query = query.eq('status', statusFilter);
       }
 
-      // Apply Dates
       if (fromDate.trim()) {
-        const isoFrom = parseDate(fromDate.trim(), false);
+        const isoFrom = parseDateString(fromDate.trim(), false);
         if (isoFrom) query = query.gte('entry_date_time', isoFrom);
       }
       if (toDate.trim()) {
-        const isoTo = parseDate(toDate.trim(), true);
+        const isoTo = parseDateString(toDate.trim(), true);
         if (isoTo) query = query.lte('entry_date_time', isoTo);
       }
 
-      // Pagination
       const from = pageNumber * limit;
       const to = from + limit - 1;
       query = query.order('created_at', { ascending: false }).range(from, to);
@@ -104,7 +86,7 @@ export const AllJobsScreen = () => {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      if (data && isMounted) {
+      if (data && !signal.aborted) {
         if (isRefresh) {
           setJobs(data);
         } else {
@@ -114,10 +96,9 @@ export const AllJobsScreen = () => {
         setHasMore(data.length === limit);
       }
     } catch (error) {
-      console.error('Error fetching jobs:', error);
-      if (isMounted) setErrorOccurred(true);
+      if (!signal.aborted) setErrorOccurred(true);
     } finally {
-      if (isMounted) {
+      if (!signal.aborted) {
         setLoading(false);
         setLoadingMore(false);
         setRefreshing(false);
@@ -126,14 +107,15 @@ export const AllJobsScreen = () => {
   };
 
   useEffect(() => {
-    let isMounted = true;
-    fetchJobs(0, true, isMounted);
-    return () => { isMounted = false; };
+    const ac = new AbortController();
+    fetchJobs(0, true, ac.signal);
+    return () => ac.abort();
   }, []);
 
   const applyFilters = () => {
     setPage(0);
-    fetchJobs(0, true);
+    const ac = new AbortController();
+    fetchJobs(0, true, ac.signal);
   };
 
   const clearFilters = () => {
@@ -143,61 +125,54 @@ export const AllJobsScreen = () => {
     setToDate('');
     setPage(0);
     setTimeout(() => {
-      fetchJobs(0, true);
+      const ac = new AbortController();
+      fetchJobs(0, true, ac.signal);
     }, 0);
   };
 
   useEffect(() => {
-    let isMounted = true;
+    const ac = new AbortController();
     if (!loading) {
       setPage(0);
-      fetchJobs(0, true, isMounted);
+      fetchJobs(0, true, ac.signal);
     }
-    return () => { isMounted = false; };
+    return () => ac.abort();
   }, [statusFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setPage(0);
-    fetchJobs(0, true);
+    const ac = new AbortController();
+    fetchJobs(0, true, ac.signal);
   }, [searchQuery, statusFilter, fromDate, toDate]);
 
   const loadMore = () => {
     if (!loadingMore && hasMore && !loading) {
       const nextPage = page + 1;
       setPage(nextPage);
-      fetchJobs(nextPage, false);
+      const ac = new AbortController();
+      fetchJobs(nextPage, false, ac.signal);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true
-    };
-    return new Intl.DateTimeFormat('en-GB', options).format(new Date(dateString));
   };
 
   const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
     setJobs((prevJobs) =>
       prevJobs.map((job) =>
-        job.id === jobSheetId ? { ...job, status: newStatus } : job
+        job.id === jobSheetId ? { ...job, status: newStatus as JobSheetStatus } : job
       )
     );
   };
 
-  const renderItem = ({ item }: { item: any }) => {
-    return (
-      <JobSheetCard
-        jobSheet={item}
-        onPress={() => navigation.navigate('JobDetailAdminScreen', { jobSheetId: item.id })}
-        onQuickStatusPress={() => {
-          setSelectedJobSheet(item);
-          setQuickStatusModalVisible(true);
-        }}
-      />
-    );
-  };
+  const renderItem = useCallback(({ item }: { item: JobSheet }) => (
+    <JobSheetCard
+      jobSheet={item}
+      onPress={() => navigation.navigate('JobDetailAdminScreen', { jobSheetId: item.id })}
+      onQuickStatusPress={() => {
+        setSelectedJobSheet(item);
+        setQuickStatusModalVisible(true);
+      }}
+    />
+  ), [navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -284,6 +259,9 @@ export const AllJobsScreen = () => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
             onEndReached={loadMore}
             onEndReachedThreshold={0.5}
+            removeClippedSubviews
+            maxToRenderPerBatch={10}
+            windowSize={7}
             ListFooterComponent={() =>
               loadingMore ? <ActivityIndicator color="#FFD700" style={{ margin: 20 }} /> : null
             }
