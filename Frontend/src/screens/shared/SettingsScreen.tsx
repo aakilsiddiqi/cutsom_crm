@@ -1,20 +1,17 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  ScrollView
+  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { supabase } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types';
 import { navigateBack } from '../../utils/navigationUtils';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
+import { HeaderBar } from '../../components/ui/HeaderBar';
+import { Card } from '../../components/ui/Card';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -23,106 +20,72 @@ export const SettingsScreen = () => {
   const { profile, signOut } = useAuth();
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to logout?')) {
-        signOut();
-      }
-    } else {
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to logout?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Logout',
-            style: 'destructive',
-            onPress: async () => {
-              await signOut();
-            }
-          }
-        ]
-      );
-    }
+    Alert.alert('Logout', 'Sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: signOut },
+    ]);
   };
 
-  const firstLetter = profile?.full_name
-    ? profile.full_name.charAt(0).toUpperCase()
-    : profile?.username
-      ? profile.username.charAt(0).toUpperCase()
-      : '?';
-
-  const roleBadgeText = profile?.role === 'admin' ? 'Admin' : 'Technician';
+  const initial = (profile?.full_name || profile?.username || '?').charAt(0).toUpperCase();
+  const roleLabel = profile?.role === 'admin' ? 'Admin' : 'Technician';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigateBack(navigation)}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 50 }} />
-      </View>
-
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Avatar */}
-        <View style={styles.avatarContainer}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+      <HeaderBar title="Settings" onBack={() => navigateBack(navigation)} />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.avatarSection}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{firstLetter}</Text>
+            <Text style={styles.avatarText} allowFontScaling={false}>{initial}</Text>
           </View>
-          <Text style={styles.fullName}>{profile?.full_name || profile?.username || 'User'}</Text>
+          <Text style={styles.name} allowFontScaling={false}>{profile?.full_name || profile?.username || 'User'}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{roleBadgeText}</Text>
+            <Text style={styles.roleBadgeText} allowFontScaling={false}>{roleLabel}</Text>
           </View>
         </View>
 
-        {/* Profile Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} allowFontScaling={false}>Profile Settings</Text>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('EditProfile')}
-          >
-            <Text style={styles.actionButtonIcon} allowFontScaling={false}>✏️</Text>
-            <Text style={styles.actionButtonText} allowFontScaling={false}>Edit Profile</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Support Section */}
-        <View style={styles.infoCard}>
+        <Card>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email</Text>
-            <Text style={styles.infoValue}>{profile?.email || 'N/A'}</Text>
+            <View style={styles.infoLeft}>
+              <Icon name="mail-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.infoLabel} allowFontScaling={false}>Email</Text>
+            </View>
+            <Text style={styles.infoValue} allowFontScaling={false}>{profile?.email || 'N/A'}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Phone</Text>
-            <Text style={styles.infoValue}>{profile?.phone || 'N/A'}</Text>
+            <View style={styles.infoLeft}>
+              <Icon name="call-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.infoLabel} allowFontScaling={false}>Phone</Text>
+            </View>
+            <Text style={styles.infoValue} allowFontScaling={false}>{profile?.phone || 'N/A'}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Username</Text>
-            <Text style={styles.infoValue}>{profile?.username || 'N/A'}</Text>
+            <View style={styles.infoLeft}>
+              <Icon name="at-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.infoLabel} allowFontScaling={false}>Username</Text>
+            </View>
+            <Text style={styles.infoValue} allowFontScaling={false}>{profile?.username || 'N/A'}</Text>
           </View>
-        </View>
+        </Card>
 
-        {/* Edit Profile Button */}
-        <TouchableOpacity 
-          style={styles.editButton} 
-          activeOpacity={0.7} 
-          onPress={() => navigation.navigate('EditProfile')}
-        >
-          <Text style={styles.editButtonText}>✏️ Edit Profile</Text>
+        <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('EditProfile')} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Icon name="create-outline" size={20} color={colors.accent} />
+            <Text style={styles.menuText} allowFontScaling={false}>Edit Profile</Text>
+          </View>
+          <Icon name="chevron-forward-outline" size={18} color={colors.textTertiary} />
         </TouchableOpacity>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} activeOpacity={0.7} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
+          <Icon name="log-out-outline" size={20} color={colors.textInverse} />
+          <Text style={styles.logoutText} allowFontScaling={false}>Logout</Text>
         </TouchableOpacity>
 
-        {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>JCB Workshop CRM v1.0.0</Text>
-          <Text style={styles.poweredBy}>Powered by Anthropic AI</Text>
+          <Text style={styles.versionText} allowFontScaling={false}>MS JCB Services v1.0.0</Text>
+          <Text style={styles.poweredText} allowFontScaling={false}>Powered by Anthropic AI</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -130,33 +93,36 @@ export const SettingsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#1a1a2e' },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  backButton: { color: '#fff', fontSize: 16 },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 20, alignItems: 'center' },
-  avatarContainer: { alignItems: 'center', marginBottom: 30, marginTop: 10 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFD700', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  avatarText: { fontSize: 36, fontWeight: 'bold', color: '#1a1a2e' },
-  fullName: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-  roleBadge: { backgroundColor: '#1a1a2e', paddingHorizontal: 14, paddingVertical: 4, borderRadius: 12 },
-  roleBadgeText: { color: '#FFD700', fontWeight: 'bold', fontSize: 13 },
-  infoCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '100%', marginBottom: 30, elevation: 2 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
-  infoLabel: { color: '#888', fontSize: 15 },
-  infoValue: { color: '#333', fontSize: 15, fontWeight: '500' },
-  divider: { height: 1, backgroundColor: '#f0f0f0' },
-  editButton: { backgroundColor: '#FFD700', paddingVertical: 16, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 16 },
-  editButtonText: { color: '#1a1a2e', fontWeight: 'bold', fontSize: 17 },
-  logoutButton: { backgroundColor: '#e74c3c', paddingVertical: 16, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 40 },
-  logoutButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
-  section: { width: '100%', marginBottom: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#555', marginBottom: 12, marginLeft: 4 },
-  actionButton: { flexDirection: 'row', backgroundColor: '#fff', padding: 16, borderRadius: 12, alignItems: 'center', elevation: 2 },
-  actionButtonIcon: { fontSize: 20, marginRight: 12 },
-  actionButtonText: { fontSize: 16, fontWeight: '600', color: '#333' },
-  appInfo: { alignItems: 'center' },
-  appVersion: { color: '#888', fontSize: 14, marginBottom: 4 },
-  poweredBy: { color: '#aaa', fontSize: 12 },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  content: { alignItems: 'center', padding: spacing.xl },
+  avatarSection: { alignItems: 'center', marginBottom: spacing['3xl'], marginTop: spacing.md },
+  avatar: {
+    width: 80, height: 80, borderRadius: 40, backgroundColor: colors.accent,
+    justifyContent: 'center', alignItems: 'center', marginBottom: spacing.md,
+  },
+  avatarText: { ...typography.title1, color: colors.headerBg },
+  name: { ...typography.title2, color: colors.textPrimary, marginBottom: spacing.sm },
+  roleBadge: { backgroundColor: colors.headerBg, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, borderRadius: radius.full },
+  roleBadgeText: { ...typography.footnote, fontWeight: '700', color: colors.accent },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm },
+  infoLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  infoLabel: { ...typography.subhead, color: colors.textSecondary },
+  infoValue: { ...typography.subhead, color: colors.textPrimary, fontWeight: '500' },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  menuBtn: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.lg,
+    marginTop: spacing.xl, width: '100%', borderWidth: 1, borderColor: colors.border,
+  },
+  menuLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  menuText: { ...typography.callout, fontWeight: '600', color: colors.textPrimary },
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.error, padding: spacing.lg, borderRadius: radius.md,
+    marginTop: spacing.md, width: '100%', gap: spacing.sm,
+  },
+  logoutText: { ...typography.callout, fontWeight: '600', color: colors.textInverse },
+  appInfo: { alignItems: 'center', marginTop: spacing['4xl'] },
+  versionText: { ...typography.footnote, color: colors.textTertiary },
+  poweredText: { ...typography.caption2, color: colors.textTertiary, marginTop: 2 },
 });

@@ -1,28 +1,22 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard
+  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback,
+  Keyboard, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabase';
 import { navigateBack } from '../../utils/navigationUtils';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
+import { HeaderBar } from '../../components/ui/HeaderBar';
+import { Card } from '../../components/ui/Card';
 
 export const EditProfileScreen = () => {
   const navigation = useNavigation();
   const { profile, updateProfile } = useAuth();
-
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [email, setEmail] = useState(profile?.email || '');
@@ -30,232 +24,153 @@ export const EditProfileScreen = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (fullName.trim().length < 3) {
-      newErrors.fullName = 'Full name must be at least 3 characters.';
-    }
-
-    if (phone.trim().length !== 10 || !/^\d+$/.test(phone.trim())) {
-      newErrors.phone = 'Phone number must be exactly 10 digits.';
-    }
-
-    if (!email.includes('@') || !email.includes('.')) {
-      newErrors.email = 'Please enter a valid email address.';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const e: Record<string, string> = {};
+    if (fullName.trim().length < 3) e.fullName = 'Full name must be at least 3 characters.';
+    if (phone.trim().length !== 10 || !/^\d+$/.test(phone.trim())) e.phone = 'Phone must be exactly 10 digits.';
+    if (!email.includes('@') || !email.includes('.')) e.email = 'Enter a valid email address.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const handleSave = async () => {
     if (!validate() || !profile) return;
-
     setLoading(true);
     try {
       const trimmedEmail = email.trim().toLowerCase();
-      const emailChanged = trimmedEmail !== profile.email;
-
-      // Update auth user if email changed
-      if (emailChanged) {
+      if (trimmedEmail !== profile.email) {
         const { error: authError } = await supabase.auth.updateUser({ email: trimmedEmail });
         if (authError) throw authError;
       }
-
-      // Update profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName.trim(),
-          phone: phone.trim(),
-          email: trimmedEmail,
-        })
-        .eq('id', profile.id);
-
+      const { error: profileError } = await supabase.from('profiles').update({
+        full_name: fullName.trim(), phone: phone.trim(), email: trimmedEmail,
+      }).eq('id', profile.id);
       if (profileError) throw profileError;
-
-      // Update local context
-      updateProfile({
-        full_name: fullName.trim(),
-        phone: phone.trim(),
-        email: trimmedEmail,
-      });
-
-      Alert.alert(
-        '✅ Profile Updated',
-        'Your profile has been saved successfully.',
-        [{ text: 'OK', onPress: () => navigateBack(navigation) }]
-      );
+      updateProfile({ full_name: fullName.trim(), phone: phone.trim(), email: trimmedEmail });
+      Alert.alert('Updated', 'Profile saved.', [{ text: 'OK', onPress: () => navigateBack(navigation) }]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update profile.';
-      Alert.alert('Error', message);
-    } finally {
-      setLoading(false);
-    }
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed.');
+    } finally { setLoading(false); }
   };
 
   const initial = (profile?.full_name || profile?.username || 'U').charAt(0).toUpperCase();
 
-  const content = (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backButton}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Edit Profile</Text>
-            <View style={{ width: 60 }} />
+  const form = (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <HeaderBar title="Edit Profile" onBack={() => navigateBack(navigation)} />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.avatarSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText} allowFontScaling={false}>{initial}</Text>
           </View>
+        </View>
 
-          <ScrollView 
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initial}</Text>
-              </View>
-            </View>
-
-            {/* Username (Read Only) */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Username</Text>
+        <Card>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Username</Text>
+            <View style={[styles.inputWrap, { backgroundColor: colors.bg }]}>
+              <Icon name="at-outline" size={18} color={colors.textTertiary} />
               <TextInput
-                style={[styles.input, styles.readOnlyInput]}
+                style={[styles.fieldInput, { color: colors.textTertiary }]}
                 value={profile?.username || ''}
                 editable={false}
               />
-              <Text style={styles.infoText}>Username cannot be changed</Text>
             </View>
+            <Text style={styles.helpText} allowFontScaling={false}>Username cannot be changed</Text>
+          </View>
 
-            {/* Full Name */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Full Name</Text>
+            <View style={[styles.inputWrap, errors.fullName && styles.inputError]}>
+              <Icon name="person-outline" size={18} color={errors.fullName ? colors.error : colors.textTertiary} />
               <TextInput
-                style={[styles.input, errors.fullName && styles.inputError]}
+                style={styles.fieldInput}
                 placeholder="Enter full name"
+                placeholderTextColor={colors.textTertiary}
                 value={fullName}
-                onChangeText={(text) => {
-                  setFullName(text);
-                  setErrors(prev => ({ ...prev, fullName: '' }));
-                }}
+                onChangeText={(t) => { setFullName(t); setErrors(prev => ({ ...prev, fullName: '' })); }}
               />
-              {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
             </View>
+            {errors.fullName && <Text style={styles.errorText} allowFontScaling={false}>{errors.fullName}</Text>}
+          </View>
 
-            {/* Phone */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone Number</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Phone Number</Text>
+            <View style={[styles.inputWrap, errors.phone && styles.inputError]}>
+              <Icon name="call-outline" size={18} color={errors.phone ? colors.error : colors.textTertiary} />
               <TextInput
-                style={[styles.input, errors.phone && styles.inputError]}
-                placeholder="10-digit phone number"
-                keyboardType="numeric"
+                style={styles.fieldInput}
+                placeholder="10-digit number"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="phone-pad"
                 maxLength={10}
                 value={phone}
-                onChangeText={(text) => {
-                  setPhone(text);
-                  setErrors(prev => ({ ...prev, phone: '' }));
-                }}
+                onChangeText={(t) => { setPhone(t); setErrors(prev => ({ ...prev, phone: '' })); }}
               />
-              {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
             </View>
+            {errors.phone && <Text style={styles.errorText} allowFontScaling={false}>{errors.phone}</Text>}
+          </View>
 
-            {/* Email */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Email Address</Text>
+            <View style={[styles.inputWrap, errors.email && styles.inputError]}>
+              <Icon name="mail-outline" size={18} color={errors.email ? colors.error : colors.textTertiary} />
               <TextInput
-                style={[styles.input, errors.email && styles.inputError]}
-                placeholder="Enter email address"
+                style={styles.fieldInput}
+                placeholder="Enter email"
+                placeholderTextColor={colors.textTertiary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  setErrors(prev => ({ ...prev, email: '' }));
-                }}
+                onChangeText={(t) => { setEmail(t); setErrors(prev => ({ ...prev, email: '' })); }}
               />
-              <Text style={styles.warningText}>⚠️ Changing email requires re-login to take effect</Text>
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
+            <Text style={[styles.helpText, { color: colors.warning }]} allowFontScaling={false}>Changing email requires re-login</Text>
+            {errors.email && <Text style={styles.errorText} allowFontScaling={false}>{errors.email}</Text>}
+          </View>
+        </Card>
 
-            <TouchableOpacity
-              style={[styles.submitButton, loading && styles.disabledButton]}
-              onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#1a1a2e" />
-              ) : (
-                <Text style={styles.submitButtonText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
+        <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.6 }]} onPress={handleSave} disabled={loading} activeOpacity={0.8}>
+          {loading ? <ActivityIndicator color={colors.headerBg} /> : (
+            <View style={styles.saveContent}>
+              <Icon name="checkmark-circle-outline" size={20} color={colors.headerBg} />
+              <Text style={styles.saveText} allowFontScaling={false}>Save Changes</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {Platform.OS === 'web' ? content : (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          {content}
-        </TouchableWithoutFeedback>
-      )}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+      {Platform.OS === 'web' ? form : <TouchableWithoutFeedback onPress={Keyboard.dismiss}>{form}</TouchableWithoutFeedback>}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1a1a2e',
-  },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  backButton: { padding: 8 },
-  backButtonText: { color: '#fff', fontSize: 16 },
-  content: { padding: 20, paddingBottom: 120, backgroundColor: '#f5f5f5', flexGrow: 1 },
-  avatarContainer: { alignItems: 'center', marginVertical: 20 },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  content: { padding: spacing.lg, paddingBottom: 120 },
+  avatarSection: { alignItems: 'center', marginVertical: spacing['2xl'] },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FFD700',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
+    width: 80, height: 80, borderRadius: 40, backgroundColor: colors.accent,
+    justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: { fontSize: 36, color: '#1a1a2e', fontWeight: 'bold' },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 8 },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+  avatarText: { ...typography.title1, color: colors.headerBg },
+  fieldGroup: { marginBottom: spacing.lg },
+  fieldLabel: { ...typography.footnote, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs },
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, minHeight: 50, gap: spacing.sm,
   },
-  readOnlyInput: { backgroundColor: '#f0f0f0', color: '#888' },
-  inputError: { borderColor: '#dc3545' },
-  errorText: { color: '#dc3545', fontSize: 12, marginTop: 4 },
-  infoText: { color: '#888', fontSize: 12, marginTop: 4 },
-  warningText: { color: '#856404', fontSize: 12, marginTop: 4, fontWeight: '500' },
-  submitButton: {
-    backgroundColor: '#FFD700',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
-    elevation: 2,
-  },
-  disabledButton: { opacity: 0.7 },
-  submitButtonText: { color: '#1a1a2e', fontWeight: 'bold', fontSize: 17 },
+  inputError: { borderColor: colors.error },
+  fieldInput: { flex: 1, ...typography.body, color: colors.textPrimary, paddingVertical: spacing.md },
+  helpText: { ...typography.caption1, color: colors.textTertiary, marginTop: spacing.xs },
+  errorText: { ...typography.caption1, color: colors.error, marginTop: spacing.xs },
+  saveBtn: { backgroundColor: colors.accent, padding: spacing.lg, borderRadius: radius.md, marginTop: spacing.md, alignItems: 'center' },
+  saveContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  saveText: { ...typography.headline, fontWeight: '700', color: colors.headerBg },
 });

@@ -122,7 +122,7 @@ CREATE TRIGGER update_job_sheets_modtime
 -- ==========================================
 CREATE TABLE public.job_updates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  job_sheet_id UUID REFERENCES public.job_sheets(id) ON DELETE CASCADE NOT NULL,
+  job_sheet_id UUID REFERENCES public.job_sheets(id) ON DELETE SET NULL DEFAULT NULL,
   updated_by UUID REFERENCES public.profiles(id) DEFAULT auth.uid() NOT NULL,
   update_note TEXT,
   status_changed_to TEXT,
@@ -136,7 +136,8 @@ ALTER TABLE public.job_updates ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Job updates viewable if job sheet is viewable"
   ON public.job_updates FOR SELECT TO authenticated
   USING (
-    EXISTS (
+    job_updates.job_sheet_id IS NULL
+    OR EXISTS (
       SELECT 1 FROM public.job_sheets 
       WHERE id = job_updates.job_sheet_id 
       AND (public.is_admin() OR assigned_to = auth.uid() OR created_by = auth.uid())
@@ -215,3 +216,27 @@ CREATE INDEX IF NOT EXISTS idx_job_sheets_assigned_to_status ON public.job_sheet
 CREATE INDEX IF NOT EXISTS idx_job_sheets_created_at ON public.job_sheets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_job_updates_job_sheet_id ON public.job_updates(job_sheet_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+
+-- ==========================================
+-- 7. MIGRATIONS (run in order on existing DB)
+-- ==========================================
+
+-- Migration 1: Keep deletion logs when job sheet is removed
+-- ALTER TABLE public.job_updates
+--   DROP CONSTRAINT job_updates_job_sheet_id_fkey,
+--   ALTER COLUMN job_sheet_id DROP NOT NULL,
+--   ADD CONSTRAINT job_updates_job_sheet_id_fkey
+--     FOREIGN KEY (job_sheet_id) REFERENCES public.job_sheets(id) ON DELETE SET NULL;
+
+-- Migration 2: Allow viewing logs for deleted sheets (null job_sheet_id)
+-- DROP POLICY IF EXISTS "Job updates viewable if job sheet is viewable" ON public.job_updates;
+-- CREATE POLICY "Job updates viewable if job sheet is viewable"
+--   ON public.job_updates FOR SELECT TO authenticated
+--   USING (
+--     job_updates.job_sheet_id IS NULL
+--     OR EXISTS (
+--       SELECT 1 FROM public.job_sheets 
+--       WHERE id = job_updates.job_sheet_id 
+--       AND (public.is_admin() OR assigned_to = auth.uid() OR created_by = auth.uid())
+--     )
+--   );

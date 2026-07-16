@@ -1,84 +1,53 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  Platform,
-  FlatList
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  ActivityIndicator, Alert, StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '../../services/supabase';
-import { JobSheet, JobSheetStatus } from '../../types';
 import { formatShortDate, formatDateTime, formatTAT, convertToISO } from '../../utils/formatting';
-import { getStatusTextColor } from '../../utils/constants';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { SectionHeader } from '../../components/ui/SectionHeader';
 
 type TechnicianStats = {
-  name: string;
-  total: number;
-  completed: number;
-  inProgress: number;
-  onHold: number;
-  inQueue: number;
-  tatHours: number[];
+  name: string; total: number; completed: number; inProgress: number;
+  onHold: number; inQueue: number; tatHours: number[];
 };
 
 type JobSheetReport = Record<string, unknown> & {
-  id: string;
-  serial_number?: string;
-  registration_number: string;
-  customer_name?: string;
-  customer_mobile?: string;
-  machine_model?: string;
-  entry_date_time: string;
-  completed_at?: string;
-  tat_hours?: number;
-  status: string;
-  parts_used?: Array<{ name: string; quantity: number }>;
-  issues_description?: string;
+  id: string; serial_number?: string; registration_number: string; customer_name?: string;
+  customer_mobile?: string; machine_model?: string; entry_date_time: string;
+  completed_at?: string; tat_hours?: number; status: string;
+  parts_used?: Array<{ name: string; quantity: number }>; issues_description?: string;
   assigned_profile?: { full_name?: string };
 };
 
 type ReportStats = {
-  total: number;
-  completed: number;
-  inProgress: number;
-  inQueue: number;
-  onHold: number;
-  avgTAT: number;
-  bestTAT: number | null;
-  worstTAT: number | null;
+  total: number; completed: number; inProgress: number; inQueue: number;
+  onHold: number; avgTAT: number; bestTAT: number | null; worstTAT: number | null;
 };
 
+const QUICK_SELECTS = ['Week', 'Month', 'LastMonth', 'Quarter'] as const;
+
 export const ReportsScreen = () => {
-  // Date states
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [dateError, setDateError] = useState('');
-
-  // Data states
   const [loading, setLoading] = useState(false);
   const [jobsData, setJobsData] = useState<JobSheetReport[] | null>(null);
   const [stats, setStats] = useState<ReportStats | null>(null);
-
-  // Billing states
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<JobSheetReport[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobSheetReport | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
-
-  // Export loading states
   const [exportingSummary, setExportingSummary] = useState(false);
   const [exportingParts, setExportingParts] = useState(false);
   const [exportingTeam, setExportingTeam] = useState(false);
-
-  // --- QUICK SELECTS ---
 
   const handleQuickSelect = (type: string) => {
     const today = new Date();
@@ -86,302 +55,143 @@ export const ReportsScreen = () => {
     const month = today.getMonth();
     let from = '';
     let to = formatShortDate(today);
-
     switch (type) {
       case 'Week': {
-        const dayOfWeek = today.getDay();
+        const dow = today.getDay();
         const monday = new Date(today);
-        monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
         from = formatShortDate(monday);
         break;
       }
-      case 'Month': {
-        from = `01/${(month + 1).toString().padStart(2, '0')}/${year}`;
-        break;
-      }
+      case 'Month': from = `01/${(month + 1).toString().padStart(2, '0')}/${year}`; break;
       case 'LastMonth': {
-        const firstDay = new Date(year, month - 1, 1);
-        const lastDay = new Date(year, month, 0);
-        from = formatShortDate(firstDay);
-        to = formatShortDate(lastDay);
+        from = formatShortDate(new Date(year, month - 1, 1));
+        to = formatShortDate(new Date(year, month, 0));
         break;
       }
-      case 'Quarter': {
-        const quarter = Math.floor(month / 3);
-        const firstDay = new Date(year, quarter * 3, 1);
-        from = formatShortDate(firstDay);
-        break;
-      }
+      case 'Quarter': from = formatShortDate(new Date(year, Math.floor(month / 3) * 3, 1)); break;
     }
     setFromDate(from);
     setToDate(to);
     setDateError('');
   };
 
-  // --- DATA FETCHING ---
-
   const fetchReportsData = async () => {
     const fromISO = convertToISO(fromDate);
     const toISO = convertToISO(toDate);
-
-    if (!fromISO || !toISO) {
-      setDateError('Invalid date format. Use DD/MM/YYYY');
-      return;
-    }
-
+    if (!fromISO || !toISO) { setDateError('Invalid date. Use DD/MM/YYYY'); return; }
     setDateError('');
     setLoading(true);
     setJobsData(null);
-
     try {
       const { data, error } = await supabase
         .from('job_sheets')
-        .select(`
-          id,
-          serial_number,
-          registration_number,
-          customer_name,
-          customer_mobile,
-          machine_model,
-          entry_date_time,
-          completed_at,
-          tat_hours,
-          status,
-          parts_used,
-          issues_description,
-          assigned_profile:profiles!assigned_to(full_name)
-        `)
+        .select(`id, serial_number, registration_number, customer_name, customer_mobile, machine_model, entry_date_time, completed_at, tat_hours, status, parts_used, issues_description, assigned_profile:profiles!assigned_to(full_name)`)
         .gte('entry_date_time', fromISO)
         .lte('entry_date_time', toISO)
         .order('entry_date_time', { ascending: false });
-
       if (error) throw error;
-
-      if (!data || data.length === 0) {
-        setJobsData([]);
-        setStats(null);
-      } else {
-        setJobsData(data as unknown as JobSheetReport[]);
-        
-        // Compute stats — single pass
-        let completed = 0, inProgress = 0, inQueue = 0, onHold = 0;
-        const tatValues: number[] = [];
-        for (const j of data) {
-          if (j.status === 'Completed') { completed++; if (j.tat_hours !== null) tatValues.push(j.tat_hours); }
-          else if (j.status === 'In Progress') inProgress++;
-          else if (j.status === 'In Queue') inQueue++;
-          else if (j.status === 'On Hold') onHold++;
-        }
-        const avgTAT = tatValues.length > 0 ? tatValues.reduce((a, b) => a + b, 0) / tatValues.length : 0;
-        
-        const computedStats = {
-          total: data.length, completed, inProgress, inQueue, onHold,
-          avgTAT,
-          bestTAT: tatValues.length > 0 ? Math.min(...tatValues) : null,
-          worstTAT: tatValues.length > 0 ? Math.max(...tatValues) : null,
-        };
-        setStats(computedStats);
+      if (!data || data.length === 0) { setJobsData([]); setStats(null); return; }
+      setJobsData(data as unknown as JobSheetReport[]);
+      let completed = 0, inProgress = 0, inQueue = 0, onHold = 0;
+      const tatVals: number[] = [];
+      for (const j of data) {
+        if (j.status === 'Completed') { completed++; if (j.tat_hours !== null) tatVals.push(j.tat_hours); }
+        else if (j.status === 'In Progress') inProgress++;
+        else if (j.status === 'In Queue') inQueue++;
+        else if (j.status === 'On Hold') onHold++;
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to fetch report data');
-    } finally {
-      setLoading(false);
-    }
+      const avg = tatVals.length > 0 ? tatVals.reduce((a, b) => a + b, 0) / tatVals.length : 0;
+      setStats({ total: data.length, completed, inProgress, inQueue, onHold, avgTAT: avg, bestTAT: tatVals.length > 0 ? Math.min(...tatVals) : null, worstTAT: tatVals.length > 0 ? Math.max(...tatVals) : null });
+    } catch { Alert.alert('Error', 'Failed to fetch data'); }
+    finally { setLoading(false); }
   };
 
-  // --- CSV EXPORT ---
-
-  const generateAndShareCSV = async (
-    filename: string,
-    headers: string[],
-    rows: string[][]
-  ): Promise<void> => {
-    try {
-      const csvRows = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ];
-      const csvContent = csvRows.join('\n');
-      const BOM = '\uFEFF';
-      const fullContent = BOM + csvContent;
-
-      if (Platform.OS === 'web') {
-        const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        const fileUri = FileSystem.documentDirectory + filename;
-        await FileSystem.writeAsStringAsync(fileUri, fullContent, {
-          encoding: FileSystem.EncodingType.UTF8
-        });
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Export Report',
-          UTI: 'public.comma-separated-values-text'
-        });
-      }
-    } catch (e) {
-      throw e;
-    }
+  const generateCSV = async (name: string, headers: string[], rows: string[][]) => {
+    const BOM = '\uFEFF';
+    const content = BOM + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const uri = FileSystem.documentDirectory + name;
+    await FileSystem.writeAsStringAsync(uri, content, { encoding: FileSystem.EncodingType.UTF8 });
+    await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'Export Report', UTI: 'public.comma-separated-values-text' });
   };
 
   const exportJobSummary = async () => {
-    if (!jobsData || jobsData.length === 0) {
-      Alert.alert('Info', 'No data found for selected date range.');
-      return;
-    }
+    if (!jobsData?.length) { Alert.alert('Info', 'No data.'); return; }
     setExportingSummary(true);
     try {
-      const headers = [
-        'Serial No', 'Registration No', 'Customer Name', 'Mobile', 'Machine Model',
-        'Entry Date', 'Completion Date', 'TAT', 'Status', 'Technician', 'Issues'
-      ];
-      const rows = jobsData.map(job => [
-        job.serial_number || 'N/A',
-        job.registration_number,
-        job.customer_name ?? '',
-        job.customer_mobile ?? '',
-        job.machine_model ?? '',
-        formatDateTime(job.entry_date_time),
-        job.completed_at ? formatDateTime(job.completed_at) : 'Pending',
-        job.tat_hours ? formatTAT(job.tat_hours) : 'N/A',
-        job.status,
-        job.assigned_profile?.full_name ?? 'Unassigned',
-        `"${(job.issues_description ?? '').replace(/"/g, '""')}"`,
+      const headers = ['Serial No', 'Registration No', 'Customer', 'Mobile', 'Model', 'Entry', 'Completion', 'TAT', 'Status', 'Technician', 'Issues'];
+      const rows = jobsData.map(j => [
+        j.serial_number || 'N/A', j.registration_number, j.customer_name ?? '', j.customer_mobile ?? '',
+        j.machine_model ?? '', formatDateTime(j.entry_date_time), j.completed_at ? formatDateTime(j.completed_at) : 'Pending',
+        j.tat_hours ? formatTAT(j.tat_hours) : 'N/A', j.status, j.assigned_profile?.full_name ?? 'Unassigned',
+        `"${(j.issues_description ?? '').replace(/"/g, '""')}"`,
       ]);
-
-      await generateAndShareCSV(`JobSummary_${fromDate.replace(/\//g, '-')}_to_${toDate.replace(/\//g, '-')}.csv`, headers, rows);
-    } catch (e) {
-      Alert.alert('Error', 'Export failed. Please try again.');
-    } finally {
-      setExportingSummary(false);
-    }
+      await generateCSV(`JobSummary_${fromDate.replace(/\//g, '-')}.csv`, headers, rows);
+    } catch { Alert.alert('Error', 'Export failed.'); }
+    finally { setExportingSummary(false); }
   };
 
   const exportPartsUsed = async () => {
-    if (!jobsData || jobsData.length === 0) {
-      Alert.alert('Info', 'No data found for selected date range.');
-      return;
-    }
+    if (!jobsData?.length) { Alert.alert('Info', 'No data.'); return; }
     setExportingParts(true);
     try {
-      const headers = ['Registration No', 'Customer Name', 'Entry Date', 'Part Name', 'Quantity', 'Technician'];
+      const headers = ['Registration', 'Customer', 'Entry Date', 'Part Name', 'Qty', 'Technician'];
       const rows: string[][] = [];
-
-      jobsData.forEach(job => {
-        const parts = job.parts_used;
-        if (Array.isArray(parts)) {
-          parts.forEach((p: { name?: string; quantity?: number }) => {
-            if (p && p.name) {
-              rows.push([
-                job.registration_number,
-                job.customer_name ?? '',
-                formatDateTime(job.entry_date_time),
-                p.name,
-                p.quantity?.toString() ?? '1',
-                job.assigned_profile?.full_name ?? 'Unassigned'
-              ]);
-            }
+      jobsData.forEach(j => {
+        if (Array.isArray(j.parts_used)) {
+          j.parts_used.forEach((p) => {
+            if (p?.name) rows.push([j.registration_number, j.customer_name ?? '', formatDateTime(j.entry_date_time), p.name, (p.quantity ?? 1).toString(), j.assigned_profile?.full_name ?? 'Unassigned']);
           });
         }
       });
-
-      if (rows.length === 0) {
-        Alert.alert('Info', 'No parts usage found in this period.');
-        return;
-      }
-
-      await generateAndShareCSV(`PartsReport_${fromDate.replace(/\//g, '-')}.csv`, headers, rows);
-    } catch (e) {
-      Alert.alert('Error', 'Export failed. Please try again.');
-    } finally {
-      setExportingParts(false);
-    }
+      if (!rows.length) { Alert.alert('Info', 'No parts used.'); return; }
+      await generateCSV(`PartsReport_${fromDate.replace(/\//g, '-')}.csv`, headers, rows);
+    } catch { Alert.alert('Error', 'Export failed.'); }
+    finally { setExportingParts(false); }
   };
 
   const exportTeamPerformance = async () => {
-    if (!jobsData || jobsData.length === 0) {
-      Alert.alert('Info', 'No data found for selected date range.');
-      return;
-    }
+    if (!jobsData?.length) { Alert.alert('Info', 'No data.'); return; }
     setExportingTeam(true);
     try {
-      const technicianMap = new Map<string, TechnicianStats>();
-
-      jobsData.forEach(job => {
-        const name = job.assigned_profile?.full_name ?? 'Unassigned';
-        if (!technicianMap.has(name)) {
-          technicianMap.set(name, {
-            name, total: 0, completed: 0,
-            inProgress: 0, onHold: 0, inQueue: 0, tatHours: []
-          });
-        }
-        const tech = technicianMap.get(name)!;
-        tech.total++;
-        if (job.status === 'Completed') tech.completed++;
-        if (job.status === 'In Progress') tech.inProgress++;
-        if (job.status === 'On Hold') tech.onHold++;
-        if (job.status === 'In Queue') tech.inQueue++;
-        if (job.tat_hours) tech.tatHours.push(job.tat_hours);
+      const map = new Map<string, TechnicianStats>();
+      jobsData.forEach(j => {
+        const n = j.assigned_profile?.full_name ?? 'Unassigned';
+        if (!map.has(n)) map.set(n, { name: n, total: 0, completed: 0, inProgress: 0, onHold: 0, inQueue: 0, tatHours: [] });
+        const t = map.get(n)!;
+        t.total++;
+        if (j.status === 'Completed') t.completed++;
+        else if (j.status === 'In Progress') t.inProgress++;
+        else if (j.status === 'On Hold') t.onHold++;
+        else if (j.status === 'In Queue') t.inQueue++;
+        if (j.tat_hours) t.tatHours.push(j.tat_hours);
       });
-
-      const headers = ['Technician', 'Total Jobs', 'Completed', 'In Progress', 'On Hold', 'In Queue', 'Avg TAT'];
-      const rows = Array.from(technicianMap.values()).map(tech => {
-        const avg = tech.tatHours.length > 0 
-          ? tech.tatHours.reduce((a, b) => a + b, 0) / tech.tatHours.length 
-          : 0;
-        return [
-          tech.name,
-          tech.total.toString(),
-          tech.completed.toString(),
-          tech.inProgress.toString(),
-          tech.onHold.toString(),
-          tech.inQueue.toString(),
-          avg > 0 ? formatTAT(avg) : 'N/A'
-        ];
+      const headers = ['Technician', 'Total', 'Completed', 'In Progress', 'On Hold', 'In Queue', 'Avg TAT'];
+      const rows = Array.from(map.values()).map(t => {
+        const avg = t.tatHours.length > 0 ? t.tatHours.reduce((a, b) => a + b, 0) / t.tatHours.length : 0;
+        return [t.name, t.total.toString(), t.completed.toString(), t.inProgress.toString(), t.onHold.toString(), t.inQueue.toString(), avg > 0 ? formatTAT(avg) : 'N/A'];
       });
-
-      await generateAndShareCSV(`TeamPerformance_${fromDate.replace(/\//g, '-')}.csv`, headers, rows);
-    } catch (e) {
-      Alert.alert('Error', 'Export failed. Please try again.');
-    } finally {
-      setExportingTeam(false);
-    }
+      await generateCSV(`TeamPerformance_${fromDate.replace(/\//g, '-')}.csv`, headers, rows);
+    } catch { Alert.alert('Error', 'Export failed.'); }
+    finally { setExportingTeam(false); }
   };
-
-  // --- BILLING SEARCH ---
 
   useEffect(() => {
     if (searchQuery.length >= 3) {
-      const delay = setTimeout(async () => {
-        const { data } = await supabase
-          .from('job_sheets')
-          .select('*, assigned_profile:profiles!assigned_to(full_name)')
-          .ilike('registration_number', `%${searchQuery}%`)
-          .limit(5);
+      const timer = setTimeout(async () => {
+        const { data } = await supabase.from('job_sheets').select('*, assigned_profile:profiles!assigned_to(full_name)').ilike('registration_number', `%${searchQuery}%`).limit(5);
         setSearchResults(data || []);
         setShowDropdown(true);
       }, 300);
-      return () => clearTimeout(delay);
-    } else {
-      setSearchResults([]);
-      setShowDropdown(false);
-    }
+      return () => clearTimeout(timer);
+    } else { setSearchResults([]); setShowDropdown(false); }
   }, [searchQuery]);
 
   const handleShareAsText = async () => {
     if (!selectedJob) return;
     const parts = Array.isArray(selectedJob.parts_used) ? selectedJob.parts_used : [];
-    
-    const billText = `
-================================
-JCB WORKSHOP - SERVICE RECORD
+    const text = `================================
+MS JCB SERVICES - SERVICE RECORD
 ================================
 Machine  : ${selectedJob.registration_number}
 Customer : ${selectedJob.customer_name ?? 'N/A'}
@@ -393,186 +203,124 @@ Closed   : ${selectedJob.completed_at ? formatDateTime(selectedJob.completed_at)
 TAT      : ${selectedJob.tat_hours ? formatTAT(selectedJob.tat_hours) : 'Ongoing'}
 --------------------------------
 PARTS USED:
-${parts.length > 0 ? parts.map((p: { name: string; quantity: number }) => `• ${p.name} x ${p.quantity}`).join('\n') : 'No parts recorded.'}
+${parts.length > 0 ? parts.map(p => `• ${p.name} x ${p.quantity}`).join('\n') : 'No parts recorded.'}
 --------------------------------
 Issues   : ${selectedJob.issues_description ?? 'None'}
 Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
-================================
-`;
-
+================================`;
     try {
-      if (Platform.OS === 'web') {
-        Alert.alert('Service Record', billText);
-      } else {
-        const filename = `Bill_${selectedJob.registration_number}_${new Date().getTime()}.txt`;
-        const fileUri = FileSystem.documentDirectory + filename;
-        await FileSystem.writeAsStringAsync(fileUri, billText);
-        await Sharing.shareAsync(fileUri);
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Failed to share record');
-    }
+      const uri = FileSystem.documentDirectory + `Bill_${selectedJob.registration_number}.txt`;
+      await FileSystem.writeAsStringAsync(uri, text);
+      await Sharing.shareAsync(uri);
+    } catch { Alert.alert('Error', 'Failed to share'); }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Reports & Export</Text>
-        <Text style={styles.headerSubtitle}>Generate reports and export data</Text>
+        <Text style={styles.headerTitle} allowFontScaling={false}>Reports & Export</Text>
+        <Text style={styles.headerSub} allowFontScaling={false}>Generate reports and export data</Text>
       </View>
-
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        
-        {/* Date Range Selector */}
-        <View style={styles.section}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Card>
           <View style={styles.dateRow}>
-            <View style={styles.dateInputContainer}>
-              <Text style={styles.label}>From</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="DD/MM/YYYY"
-                value={fromDate}
-                onChangeText={setFromDate}
-              />
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel} allowFontScaling={false}>From</Text>
+              <TextInput style={styles.input} placeholder="DD/MM/YYYY" value={fromDate} onChangeText={setFromDate} placeholderTextColor={colors.textTertiary} />
             </View>
-            <View style={styles.dateInputContainer}>
-              <Text style={styles.label}>To</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="DD/MM/YYYY"
-                value={toDate}
-                onChangeText={setToDate}
-              />
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel} allowFontScaling={false}>To</Text>
+              <TextInput style={styles.input} placeholder="DD/MM/YYYY" value={toDate} onChangeText={setToDate} placeholderTextColor={colors.textTertiary} />
             </View>
           </View>
-          {dateError ? <Text style={styles.errorText}>{dateError}</Text> : null}
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickSelectRow}>
-            {['Week', 'Month', 'LastMonth', 'Quarter'].map((type) => (
-              <TouchableOpacity 
-                key={type} 
-                style={styles.quickButton}
-                onPress={() => handleQuickSelect(type)}
-              >
-                <Text style={styles.quickButtonText}>{type.replace('LastMonth', 'Last Month')}</Text>
-              </TouchableOpacity>
-            ))}
+          {dateError ? <Text style={styles.errorText} allowFontScaling={false}>{dateError}</Text> : null}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: spacing.md }}>
+            <View style={styles.chipsRow}>
+              {QUICK_SELECTS.map(t => (
+                <TouchableOpacity key={t} style={styles.chip} onPress={() => handleQuickSelect(t)} activeOpacity={0.7}>
+                  <Text style={styles.chipText} allowFontScaling={false}>{t === 'LastMonth' ? 'Last Month' : t}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </ScrollView>
+          <Button title="Apply Filters" onPress={fetchReportsData} variant="primary" fullWidth />
+        </Card>
 
-          <TouchableOpacity style={styles.applyButton} onPress={fetchReportsData}>
-            <Text style={styles.applyButtonText}>Apply Filters</Text>
-          </TouchableOpacity>
-        </View>
+        {loading && <View style={{ padding: spacing['3xl'] }}><ActivityIndicator size="large" color={colors.accent} /></View>}
 
-        {/* Loading Spinner */}
-        {loading && <ActivityIndicator size="large" color="#FFD700" style={{ marginVertical: 20 }} />}
-
-        {/* Summary Stats */}
         {stats && (
-          <View style={styles.statsCard}>
+          <Card elevated>
             <View style={styles.statsGrid}>
-              <View style={styles.statCell}>
-                <Text style={styles.statValue}>{stats.total}</Text>
-                <Text style={styles.statLabel}>Total Machines</Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: '#28a745' }]}>{stats.completed}</Text>
-                <Text style={styles.statLabel}>Completed</Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: '#007bff' }]}>{stats.inProgress}</Text>
-                <Text style={styles.statLabel}>In Progress</Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: '#ffc107' }]}>{stats.inQueue}</Text>
-                <Text style={styles.statLabel}>In Queue</Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: '#dc3545' }]}>{stats.onHold}</Text>
-                <Text style={styles.statLabel}>On Hold</Text>
-              </View>
-              <View style={styles.statCell}>
-                <Text style={styles.statValue}>{stats.avgTAT > 0 ? formatTAT(stats.avgTAT) : 'N/A'}</Text>
-                <Text style={styles.statLabel}>Avg TAT</Text>
-              </View>
+              {[
+                { label: 'Total', value: stats.total, color: colors.textPrimary },
+                { label: 'Completed', value: stats.completed, color: colors.success },
+                { label: 'In Progress', value: stats.inProgress, color: colors.info },
+                { label: 'In Queue', value: stats.inQueue, color: colors.warning },
+                { label: 'On Hold', value: stats.onHold, color: colors.error },
+                { label: 'Avg TAT', value: stats.avgTAT > 0 ? formatTAT(stats.avgTAT) : 'N/A', color: colors.textPrimary },
+              ].map((s, i) => (
+                <View key={i} style={styles.statCell}>
+                  <Text style={[styles.statValue, { color: s.color }]} allowFontScaling={false}>{s.value}</Text>
+                  <Text style={styles.statLabel} allowFontScaling={false}>{s.label}</Text>
+                </View>
+              ))}
             </View>
-            <View style={styles.tatFooter}>
-              <Text style={styles.bestTAT}>Best TAT: {stats.bestTAT ? formatTAT(stats.bestTAT) : 'N/A'}</Text>
-              <Text style={styles.worstTAT}>Worst TAT: {stats.worstTAT ? formatTAT(stats.worstTAT) : 'N/A'}</Text>
+            <View style={styles.tatRow}>
+              <Text style={[styles.tatText, { color: colors.success }]} allowFontScaling={false}>Best TAT: {stats.bestTAT ? formatTAT(stats.bestTAT) : 'N/A'}</Text>
+              <Text style={[styles.tatText, { color: colors.error }]} allowFontScaling={false}>Worst TAT: {stats.worstTAT ? formatTAT(stats.worstTAT) : 'N/A'}</Text>
             </View>
-          </View>
+          </Card>
         )}
 
-        {/* Empty State */}
         {jobsData && jobsData.length === 0 && !loading && (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No data for this period</Text>
+          <View style={styles.empty}>
+            <Icon name="search-outline" size={40} color={colors.textTertiary} />
+            <Text style={styles.emptyText} allowFontScaling={false}>No data for this period</Text>
           </View>
         )}
 
-        {/* Export Buttons */}
         {jobsData && jobsData.length > 0 && (
-          <View style={styles.section}>
-            <TouchableOpacity 
-              style={styles.exportButton} 
-              onPress={exportJobSummary}
-              disabled={exportingSummary}
-            >
-              <Text style={styles.exportButtonText}>
-                {exportingSummary ? '📊 Generating...' : '📊 Export Job Summary'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.exportButton} 
-              onPress={exportPartsUsed}
-              disabled={exportingParts}
-            >
-              <Text style={styles.exportButtonText}>
-                {exportingParts ? '🔧 Generating...' : '🔧 Export Parts & Materials'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.exportButton} 
-              onPress={exportTeamPerformance}
-              disabled={exportingTeam}
-            >
-              <Text style={styles.exportButtonText}>
-                {exportingTeam ? '👥 Generating...' : '👥 Export Team Performance'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <Card>
+            <Text style={styles.sectionTitle} allowFontScaling={false}>Exports</Text>
+            <View style={styles.exportList}>
+              <TouchableOpacity style={styles.exportBtn} onPress={exportJobSummary} disabled={exportingSummary} activeOpacity={0.7}>
+                <Icon name="document-text-outline" size={20} color={colors.accent} />
+                <Text style={styles.exportBtnText} allowFontScaling={false}>{exportingSummary ? 'Generating...' : 'Export Job Summary'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.exportBtn} onPress={exportPartsUsed} disabled={exportingParts} activeOpacity={0.7}>
+                <Icon name="construct-outline" size={20} color={colors.accent} />
+                <Text style={styles.exportBtnText} allowFontScaling={false}>{exportingParts ? 'Generating...' : 'Export Parts & Materials'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.exportBtn} onPress={exportTeamPerformance} disabled={exportingTeam} activeOpacity={0.7}>
+                <Icon name="people-outline" size={20} color={colors.accent} />
+                <Text style={styles.exportBtnText} allowFontScaling={false}>{exportingTeam ? 'Generating...' : 'Export Team Performance'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
         )}
 
-        {/* Billing Generator */}
-        <View style={[styles.section, { marginTop: 20 }]}>
-          <Text style={styles.sectionTitle}>🧾 Billing Card Generator</Text>
-          <Text style={styles.sectionSubtitle}>Search a completed job to generate service record</Text>
-          
-          <View style={styles.searchContainer}>
+        <SectionHeader title="Billing Card Generator" subtitle="Search completed job for service record" />
+        <Card>
+          <View style={styles.searchWrap}>
             <TextInput
               style={styles.input}
               placeholder="Enter registration number..."
               value={searchQuery}
               onChangeText={setSearchQuery}
+              placeholderTextColor={colors.textTertiary}
             />
             {showDropdown && searchResults.length > 0 && (
               <View style={styles.dropdown}>
-                {searchResults.map((job) => (
-                  <TouchableOpacity 
-                    key={job.id} 
-                    style={styles.dropdownItem}
-                    onPress={() => {
-                      setSelectedJob(job);
-                      setShowDropdown(false);
-                      setSearchQuery('');
-                    }}
-                  >
-                    <Text style={styles.dropdownMain}>{job.registration_number}</Text>
-                    <Text style={styles.dropdownSub}>{job.customer_name ?? 'N/A'}</Text>
-                    <Text style={[styles.dropdownStatus, { color: getStatusTextColor(job.status) }]}>{job.status}</Text>
+                {searchResults.map(j => (
+                  <TouchableOpacity key={j.id} style={styles.dropdownItem} onPress={() => { setSelectedJob(j); setShowDropdown(false); setSearchQuery(''); }}>
+                    <Text style={styles.dropdownMain} allowFontScaling={false}>{j.registration_number}</Text>
+                    <View style={styles.dropdownRow}>
+                      <Text style={styles.dropdownSub} allowFontScaling={false}>{j.customer_name ?? 'N/A'}</Text>
+                      <View style={[styles.miniStatus, { backgroundColor: STATUS_COLORS[j.status]?.bg || colors.shimmer }]}>
+                        <Text style={[styles.miniStatusText, { color: STATUS_COLORS[j.status]?.text || colors.textSecondary }]} allowFontScaling={false}>{j.status}</Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -582,97 +330,121 @@ Engineer : ${selectedJob.assigned_profile?.full_name ?? 'Unassigned'}
           {selectedJob && (
             <View style={styles.billingCard}>
               <View style={styles.billingHeader}>
-                <Text style={styles.billingTitle}>JCB WORKSHOP - SERVICE RECORD</Text>
+                <Text style={styles.billingTitle} allowFontScaling={false}>MS JCB SERVICES - SERVICE RECORD</Text>
               </View>
               <View style={styles.billingBody}>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Machine :</Text><Text style={styles.billValue}>{selectedJob.registration_number}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Customer:</Text><Text style={styles.billValue}>{selectedJob.customer_name ?? 'N/A'}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Mobile  :</Text><Text style={styles.billValue}>{selectedJob.customer_mobile ?? 'N/A'}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Model   :</Text><Text style={styles.billValue}>{selectedJob.machine_model ?? 'N/A'}</Text></View>
-                <View style={styles.billDivider} />
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Entry   :</Text><Text style={styles.billValue}>{formatDateTime(selectedJob.entry_date_time)}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Closed  :</Text><Text style={styles.billValue}>{selectedJob.completed_at ? formatDateTime(selectedJob.completed_at) : 'N/A'}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>TAT     :</Text><Text style={styles.billValue}>{selectedJob.tat_hours ? formatTAT(selectedJob.tat_hours) : 'Ongoing'}</Text></View>
-                <View style={styles.billDivider} />
-                <Text style={styles.billLabel}>PARTS USED:</Text>
-                {Array.isArray(selectedJob.parts_used) && selectedJob.parts_used.length > 0 ? (
-                  selectedJob.parts_used.map((p: { name: string; quantity: number }, idx: number) => (
-                    <Text key={idx} style={styles.partItem}>• {p.name}   Qty: {p.quantity}</Text>
-                  ))
-                ) : <Text style={styles.partItem}>No parts recorded</Text>}
-                <View style={styles.billDivider} />
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Issues  :</Text><Text style={styles.billValue}>{selectedJob.issues_description ?? 'None'}</Text></View>
-                <View style={styles.billingRow}><Text style={styles.billLabel}>Engineer:</Text><Text style={styles.billValue}>{selectedJob.assigned_profile?.full_name ?? 'Unassigned'}</Text></View>
+                {[
+                  ['Machine', selectedJob.registration_number],
+                  ['Customer', selectedJob.customer_name ?? 'N/A'],
+                  ['Mobile', selectedJob.customer_mobile ?? 'N/A'],
+                  ['Model', selectedJob.machine_model ?? 'N/A'],
+                ].map(([l, v]) => (
+                  <BillRow key={l} label={l} value={v} />
+                ))}
+                <BillDivider />
+                {[
+                  ['Entry', formatDateTime(selectedJob.entry_date_time)],
+                  ['Closed', selectedJob.completed_at ? formatDateTime(selectedJob.completed_at) : 'N/A'],
+                  ['TAT', selectedJob.tat_hours ? formatTAT(selectedJob.tat_hours) : 'Ongoing'],
+                ].map(([l, v]) => (
+                  <BillRow key={l} label={l} value={v} />
+                ))}
+                <BillDivider />
+                <Text style={styles.billSectionLabel} allowFontScaling={false}>PARTS USED:</Text>
+                {Array.isArray(selectedJob.parts_used) && selectedJob.parts_used.length > 0
+                  ? selectedJob.parts_used.map((p, i) => (
+                      <Text key={i} style={styles.partItem} allowFontScaling={false}>• {p.name}   Qty: {p.quantity}</Text>
+                    ))
+                  : <Text style={styles.partItem} allowFontScaling={false}>No parts recorded</Text>}
+                <BillDivider />
+                <BillRow label="Issues" value={selectedJob.issues_description ?? 'None'} />
+                <BillRow label="Engineer" value={selectedJob.assigned_profile?.full_name ?? 'Unassigned'} />
               </View>
-              
-              <View style={styles.billingActions}>
-                <TouchableOpacity style={styles.shareButton} onPress={handleShareAsText}>
-                  <Text style={styles.shareButtonText}>📤 Share as Text</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.clearButton} onPress={() => setSelectedJob(null)}>
-                  <Text style={styles.clearButtonText}>🔄 Clear Selection</Text>
-                </TouchableOpacity>
+              <View style={styles.billingFooter}>
+                <Button title="Share as Text" icon="share-outline" onPress={handleShareAsText} variant="secondary" fullWidth />
+                <Button title="Clear" variant="ghost" onPress={() => setSelectedJob(null)} fullWidth />
               </View>
             </View>
           )}
-        </View>
-
+        </Card>
         <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+const BillRow = ({ label, value }: { label: string; value: string }) => (
+  <View style={styles.billRow}>
+    <Text style={styles.billLabel} allowFontScaling={false}>{label}</Text>
+    <Text style={styles.billValue} allowFontScaling={false}>{value}</Text>
+  </View>
+);
+
+const BillDivider = () => <View style={styles.billDivider} />;
+
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  'In Queue': { bg: colors.statusQueueBg, text: colors.statusQueue },
+  'In Progress': { bg: colors.statusProgressBg, text: colors.statusProgress },
+  Completed: { bg: colors.statusCompletedBg, text: colors.statusCompleted },
+  'On Hold': { bg: colors.statusHoldBg, text: colors.statusHold },
+};
+
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  header: { padding: 20, backgroundColor: '#1a1a2e' },
-  headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
-  headerSubtitle: { color: '#aaa', fontSize: 14, marginTop: 4 },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 16 },
-  section: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 6 },
-  dateRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  dateInputContainer: { width: '48%' },
-  input: { backgroundColor: '#fff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', fontSize: 16 },
-  errorText: { color: '#dc3545', fontSize: 12, marginTop: 4, fontWeight: '600' },
-  quickSelectRow: { marginVertical: 12 },
-  quickButton: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 10, borderWidth: 1, borderColor: '#ccc' },
-  quickButtonText: { color: '#666', fontWeight: '600' },
-  applyButton: { backgroundColor: '#1a1a2e', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 10 },
-  applyButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  statsCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 20, elevation: 3 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  statCell: { width: '30%', marginBottom: 16, alignItems: 'center' },
-  statValue: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  statLabel: { fontSize: 10, color: '#999', marginTop: 2, textAlign: 'center' },
-  tatFooter: { borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between' },
-  bestTAT: { color: '#28a745', fontSize: 12, fontWeight: 'bold' },
-  worstTAT: { color: '#dc3545', fontSize: 12, fontWeight: 'bold' },
-  exportButton: { backgroundColor: '#1a1a2e', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  exportButtonText: { color: '#fff', fontWeight: 'bold' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  sectionSubtitle: { fontSize: 12, color: '#666', marginBottom: 16 },
-  searchContainer: { position: 'relative', zIndex: 10 },
-  dropdown: { position: 'absolute', top: 50, left: 0, right: 0, backgroundColor: '#fff', borderRadius: 8, elevation: 5, borderWidth: 1, borderColor: '#eee' },
-  dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  dropdownMain: { fontWeight: 'bold', fontSize: 15 },
-  dropdownSub: { fontSize: 12, color: '#666' },
-  dropdownStatus: { fontSize: 10, fontWeight: 'bold', marginTop: 2 },
-  billingCard: { backgroundColor: '#fff', borderRadius: 8, borderWidth: 2, borderColor: '#000', marginTop: 20, padding: 1 },
-  billingHeader: { borderBottomWidth: 1, borderBottomColor: '#000', padding: 10, alignItems: 'center' },
-  billingTitle: { fontWeight: 'bold', fontSize: 14 },
-  billingBody: { padding: 15 },
-  billingRow: { flexDirection: 'row', marginBottom: 4 },
-  billLabel: { width: 80, fontWeight: 'bold', fontSize: 13 },
-  billValue: { flex: 1, fontSize: 13 },
-  billDivider: { height: 1, backgroundColor: '#000', marginVertical: 8, borderStyle: 'dashed' },
-  partItem: { fontSize: 13, marginLeft: 10, marginBottom: 2 },
-  billingActions: { padding: 15, gap: 10 },
-  shareButton: { backgroundColor: '#007bff', padding: 12, borderRadius: 6, alignItems: 'center' },
-  shareButtonText: { color: '#fff', fontWeight: 'bold' },
-  clearButton: { backgroundColor: '#f8f9fa', padding: 12, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: '#ddd' },
-  clearButtonText: { color: '#333', fontWeight: '600' },
-  emptyContainer: { alignItems: 'center', padding: 40 },
-  emptyText: { color: '#888', fontSize: 16 },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  header: { padding: spacing.xl, backgroundColor: colors.headerBg },
+  headerTitle: { ...typography.title2, color: colors.headerText },
+  headerSub: { ...typography.footnote, color: colors.textTertiary, marginTop: 2 },
+  content: { padding: spacing.lg },
+  dateRow: { flexDirection: 'row', gap: spacing.md },
+  dateField: { flex: 1 },
+  fieldLabel: { ...typography.footnote, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs },
+  input: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    padding: spacing.md, ...typography.body, color: colors.textPrimary,
+  },
+  errorText: { ...typography.caption1, color: colors.error, marginTop: spacing.xs },
+  chipsRow: { flexDirection: 'row', gap: spacing.sm },
+  chip: {
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.full,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  },
+  chipText: { ...typography.subhead, color: colors.textSecondary, fontWeight: '600' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  statCell: { width: '33%', alignItems: 'center', marginBottom: spacing.md },
+  statValue: { ...typography.title2, fontWeight: '700' },
+  statLabel: { ...typography.caption2, color: colors.textSecondary, marginTop: 2 },
+  tatRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: spacing.md },
+  tatText: { ...typography.footnote, fontWeight: '700' },
+  empty: { alignItems: 'center', padding: spacing['4xl'], gap: spacing.md },
+  emptyText: { ...typography.callout, color: colors.textSecondary },
+  sectionTitle: { ...typography.headline, color: colors.textPrimary, marginBottom: spacing.md },
+  exportList: { gap: spacing.sm },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.headerBg,
+    padding: spacing.lg, borderRadius: radius.md, gap: spacing.md,
+  },
+  exportBtnText: { ...typography.callout, fontWeight: '600', color: colors.accent, flex: 1 },
+  searchWrap: { position: 'relative', zIndex: 10 },
+  dropdown: {
+    position: 'absolute', top: 52, left: 0, right: 0, backgroundColor: colors.surface,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 5,
+  },
+  dropdownItem: { padding: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  dropdownMain: { ...typography.callout, fontWeight: '600', color: colors.textPrimary },
+  dropdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  dropdownSub: { ...typography.caption1, color: colors.textSecondary },
+  miniStatus: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm },
+  miniStatusText: { ...typography.caption2, fontWeight: '600' },
+  billingCard: { marginTop: spacing.lg },
+  billingHeader: { borderBottomWidth: 1, borderBottomColor: colors.textPrimary, paddingBottom: spacing.sm, marginBottom: spacing.md },
+  billingTitle: { ...typography.callout, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  billingBody: {},
+  billRow: { flexDirection: 'row', marginBottom: 3 },
+  billLabel: { width: 80, ...typography.footnote, fontWeight: '700', color: colors.textPrimary },
+  billValue: { flex: 1, ...typography.footnote, color: colors.textPrimary },
+  billDivider: { height: 1, backgroundColor: colors.textPrimary, marginVertical: spacing.sm },
+  billSectionLabel: { ...typography.footnote, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  partItem: { ...typography.footnote, color: colors.textPrimary, marginLeft: spacing.md, marginBottom: 2 },
+  billingFooter: { gap: spacing.sm, marginTop: spacing.md },
 });

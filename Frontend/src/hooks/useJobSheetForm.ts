@@ -4,24 +4,42 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase, uploadPhotoFromUri } from '../services/supabase';
 import { UserProfile, JobSheetStatus, PartUsed } from '../types';
 
-export function useJobSheetForm() {
-  const [registrationNumber, setRegistrationNumber] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerMobile, setCustomerMobile] = useState('');
-  const [entryDateTime, setEntryDateTime] = useState(new Date());
+export type JobSheetFormInitial = {
+  registrationNumber?: string;
+  customerName?: string;
+  customerMobile?: string;
+  entryDateTime?: Date;
+  selectedModel?: string;
+  isCustomModel?: boolean;
+  customModelText?: string;
+  serviceLocation?: 'Workshop' | 'On-Site';
+  priority?: 'Normal' | 'Urgent';
+  issuesDescription?: string;
+  status?: JobSheetStatus;
+  assigneeId?: string;
+  partsNeeded?: string[];
+  partsUsed?: PartUsed[];
+  descriptionBox?: string;
+};
+
+export function useJobSheetForm(saved?: JobSheetFormInitial) {
+  const [registrationNumber, setRegistrationNumber] = useState(saved?.registrationNumber || '');
+  const [customerName, setCustomerName] = useState(saved?.customerName || '');
+  const [customerMobile, setCustomerMobile] = useState(saved?.customerMobile || '');
+  const [entryDateTime, setEntryDateTime] = useState(saved?.entryDateTime || new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('3DX');
-  const [isCustomModel, setIsCustomModel] = useState(false);
-  const [customModelText, setCustomModelText] = useState('');
-  const [serviceLocation, setServiceLocation] = useState<'Workshop' | 'On-Site'>('Workshop');
-  const [priority, setPriority] = useState<'Normal' | 'Urgent'>('Normal');
-  const [issuesDescription, setIssuesDescription] = useState('');
-  const [status, setStatus] = useState<JobSheetStatus>('In Queue');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [partsNeeded, setPartsNeeded] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState(saved?.selectedModel || '3DX');
+  const [isCustomModel, setIsCustomModel] = useState(saved?.isCustomModel || false);
+  const [customModelText, setCustomModelText] = useState(saved?.customModelText || '');
+  const [serviceLocation, setServiceLocation] = useState<'Workshop' | 'On-Site'>(saved?.serviceLocation || 'Workshop');
+  const [priority, setPriority] = useState<'Normal' | 'Urgent'>(saved?.priority || 'Normal');
+  const [issuesDescription, setIssuesDescription] = useState(saved?.issuesDescription || '');
+  const [status, setStatus] = useState<JobSheetStatus>(saved?.status || 'In Queue');
+  const [assigneeId, setAssigneeId] = useState(saved?.assigneeId || '');
+  const [partsNeeded, setPartsNeeded] = useState<string[]>(saved?.partsNeeded || []);
   const [newPartNeeded, setNewPartNeeded] = useState('');
-  const [partsUsed, setPartsUsed] = useState<PartUsed[]>([]);
+  const [partsUsed, setPartsUsed] = useState<PartUsed[]>(saved?.partsUsed || []);
   const [newPartUsedName, setNewPartUsedName] = useState('');
   const [newPartUsedQty, setNewPartUsedQty] = useState('1');
   const [editingPartIndex, setEditingPartIndex] = useState<number | null>(null);

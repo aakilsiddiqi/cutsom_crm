@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,18 +8,22 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView
+  Animated,
+  StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { AdminStackParamList, JobSheetStatus, JobSheet } from '../../types';
+import { colors, typography, radius, spacing, shadows } from '../../theme/tokens';
+import { ScreenWrapper } from '../../components/ui/ScreenWrapper';
+import { Icon } from '../../components/ui/Icon';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { JobSheetCard } from '../../components/JobSheetCard';
 import { QuickStatusModal } from '../../components/QuickStatusModal';
 import { parseDateString } from '../../utils/formatting';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AdminTabs'>;
-
 type StatusFilter = 'All' | JobSheetStatus | 'Urgent';
 
 export const AllJobsScreen = () => {
@@ -31,20 +35,29 @@ export const AllJobsScreen = () => {
   const [errorOccurred, setErrorOccurred] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [showDateFilter, setShowDateFilter] = useState(false);
 
-  // Pagination
   const [page, setPage] = useState(0);
   const limit = 50;
   const [hasMore, setHasMore] = useState(true);
 
-  // Quick Status Modal
   const [quickStatusModalVisible, setQuickStatusModalVisible] = useState(false);
   const [selectedJobSheet, setSelectedJobSheet] = useState<JobSheet | null>(null);
+
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(15)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, speed: 50, bounciness: 6, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const fetchJobs = async (pageNumber: number, isRefresh: boolean = false, signal: AbortSignal) => {
     try {
@@ -112,6 +125,15 @@ export const AllJobsScreen = () => {
     return () => ac.abort();
   }, []);
 
+  useEffect(() => {
+    const ac = new AbortController();
+    if (!loading) {
+      setPage(0);
+      fetchJobs(0, true, ac.signal);
+    }
+    return () => ac.abort();
+  }, [statusFilter]);
+
   const applyFilters = () => {
     setPage(0);
     const ac = new AbortController();
@@ -129,15 +151,6 @@ export const AllJobsScreen = () => {
       fetchJobs(0, true, ac.signal);
     }, 0);
   };
-
-  useEffect(() => {
-    const ac = new AbortController();
-    if (!loading) {
-      setPage(0);
-      fetchJobs(0, true, ac.signal);
-    }
-    return () => ac.abort();
-  }, [statusFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -174,81 +187,115 @@ export const AllJobsScreen = () => {
     />
   ), [navigation]);
 
+  const statusPills: StatusFilter[] = ['All', 'In Queue', 'In Progress', 'On Hold', 'Completed', 'Urgent'];
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenWrapper>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>All Jobs</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle} allowFontScaling={false}>All Jobs</Text>
+          <View style={styles.headerBadge}>
+            <Text style={styles.headerBadgeText} allowFontScaling={false}>{totalCount}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.dateToggleBtn}
+          onPress={() => setShowDateFilter(!showDateFilter)}
+          activeOpacity={0.7}
+        >
+          <Icon name="filter-outline" size={20} color={colors.headerText} />
+          {showDateFilter && <View style={styles.filterDot} />}
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.container}>
-        {/* Search */}
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by registration, customer, mobile..."
-          placeholderTextColor="#888"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={applyFilters}
-        />
+      <Animated.View style={[styles.container, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Icon name="search-outline" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search jobs, customers, mobile..."
+            placeholderTextColor={colors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={applyFilters}
+            returnKeyType="search"
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => { setSearchQuery(''); applyFilters(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Icon name="close-circle" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Date Filter */}
+        {showDateFilter && (
+          <View style={styles.dateFilterCard}>
+            <View style={styles.dateInputsRow}>
+              <View style={styles.dateInputWrap}>
+                <Text style={styles.dateInputLabel} allowFontScaling={false}>From</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  placeholder="DD/MM/YYYY"
+                  placeholderTextColor={colors.textTertiary}
+                  value={fromDate}
+                  onChangeText={setFromDate}
+                />
+              </View>
+              <View style={styles.dateInputWrap}>
+                <Text style={styles.dateInputLabel} allowFontScaling={false}>To</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  placeholder="DD/MM/YYYY"
+                  placeholderTextColor={colors.textTertiary}
+                  value={toDate}
+                  onChangeText={setToDate}
+                />
+              </View>
+            </View>
+            <View style={styles.dateActions}>
+              <TouchableOpacity style={styles.dateActionBtn} onPress={applyFilters}>
+                <Text style={styles.dateActionText} allowFontScaling={false}>Apply</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.dateActionBtn, styles.dateActionClear]} onPress={clearFilters}>
+                <Text style={[styles.dateActionText, { color: colors.textSecondary }]} allowFontScaling={false}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Status Pills */}
-        <View style={styles.pillsContainer}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={['All', 'In Queue', 'In Progress', 'On Hold', 'Completed', 'Urgent']}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={[styles.pill, statusFilter === item && styles.pillActive]}
-                onPress={() => setStatusFilter(item as StatusFilter)}
-              >
-                <Text style={[
-                  styles.pillText, 
-                  statusFilter === item && styles.pillTextActive,
-                  item === 'Urgent' && statusFilter !== 'Urgent' && { color: '#e74c3c' }
-                ]}>
-                  {item === 'Urgent' ? '⚡ Urgent' : item}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-
-        {/* Date Filters */}
-        <View style={styles.dateFilterContainer}>
-          <View style={styles.dateInputsRow}>
-            <TextInput
-              style={styles.dateInput}
-              placeholder="From DD/MM/YYYY"
-              value={fromDate}
-              onChangeText={setFromDate}
-            />
-            <TextInput
-              style={styles.dateInput}
-              placeholder="To DD/MM/YYYY"
-              value={toDate}
-              onChangeText={setToDate}
-            />
-          </View>
-          <View style={styles.dateButtonsRow}>
-            <TouchableOpacity activeOpacity={0.7} style={styles.applyButton} onPress={applyFilters}>
-              <Text style={styles.applyButtonText}>Apply Filters</Text>
+        <FlatList
+          horizontal
+          data={statusPills}
+          keyExtractor={(item) => item}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsRow}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.pill, statusFilter === item && styles.pillActive]}
+              onPress={() => setStatusFilter(item)}
+              activeOpacity={0.7}
+            >
+              {item === 'Urgent' && <Icon name="flash" size={12} color={statusFilter === item ? '#000' : colors.error} />}
+              <Text style={[styles.pillText, statusFilter === item && styles.pillTextActive]}>
+                {item}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.7} style={styles.clearButton} onPress={clearFilters}>
-              <Text style={styles.clearButtonText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          )}
+        />
 
-        <Text style={styles.countText}>Showing {totalCount} job sheets</Text>
-
+        {/* Job List */}
         {loading && !refreshing && jobs.length === 0 ? (
-          <ActivityIndicator size="large" color="#FFD700" style={{ marginTop: 40 }} />
+          <View style={styles.centerState}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
         ) : errorOccurred ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>⚠️ Failed to load data. Pull down to refresh.</Text>
+          <View style={styles.centerState}>
+            <EmptyState icon="cloud-offline-outline" title="Failed to load data" message="Pull down to refresh and try again." />
           </View>
         ) : (
           <FlatList
@@ -256,24 +303,22 @@ export const AllJobsScreen = () => {
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
             onEndReached={loadMore}
             onEndReachedThreshold={0.5}
             removeClippedSubviews
             maxToRenderPerBatch={10}
             windowSize={7}
+            showsVerticalScrollIndicator={false}
             ListFooterComponent={() =>
-              loadingMore ? <ActivityIndicator color="#FFD700" style={{ margin: 20 }} /> : null
+              loadingMore ? <ActivityIndicator color={colors.accent} style={{ margin: spacing.xl }} /> : null
             }
             ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>🔧</Text>
-                <Text style={styles.emptyText}>No job sheets found.</Text>
-              </View>
+              <EmptyState icon="clipboard-outline" title="No job sheets found" message="Try adjusting your filters or create a new job." />
             )}
           />
         )}
-      </View>
+      </Animated.View>
 
       <QuickStatusModal
         visible={quickStatusModalVisible}
@@ -281,45 +326,185 @@ export const AllJobsScreen = () => {
         onClose={() => setQuickStatusModalVisible(false)}
         onStatusUpdate={handleStatusUpdate}
       />
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  header: { padding: 20, backgroundColor: '#1a1a2e' },
-  headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 12 },
-  searchInput: { backgroundColor: '#fff', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', fontSize: 16, marginBottom: 12 },
-  pillsContainer: { marginBottom: 12 },
-  pill: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#ddd' },
-  pillActive: { backgroundColor: '#FFD700', borderColor: '#FFD700' },
-  pillText: { color: '#666', fontWeight: '600' },
-  pillTextActive: { color: '#1a1a2e' },
-  dateFilterContainer: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#ddd' },
-  dateInputsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  dateInput: { flex: 1, backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 6, padding: 10, marginRight: 5, fontSize: 14 },
-  dateButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end' },
-  applyButton: { backgroundColor: '#FFD700', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, marginLeft: 8 },
-  applyButtonText: { color: '#1a1a2e', fontWeight: 'bold' },
-  clearButton: { backgroundColor: '#f0f0f0', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, marginLeft: 8 },
-  clearButtonText: { color: '#333', fontWeight: 'bold' },
-  countText: { fontSize: 14, color: '#666', marginBottom: 8, fontWeight: '500', marginLeft: 4 },
-  listContent: { paddingBottom: 20 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 1, borderWidth: 1, borderColor: '#eee' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  regNumber: { fontSize: 18, fontWeight: 'bold', color: '#1a1a2e' },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  badgeText: { fontSize: 12, fontWeight: 'bold' },
-  customerText: { fontSize: 15, color: '#444', marginBottom: 4 },
-  modelText: { fontSize: 14, color: '#666', marginBottom: 4 },
-  dateText: { fontSize: 13, color: '#888', marginBottom: 10 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 10 },
-  techText: { fontSize: 14, color: '#555', fontWeight: '500' },
-  tatText: { fontSize: 13, color: '#155724', fontWeight: 'bold', backgroundColor: '#D4EDDA', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  emptyText: { textAlign: 'center', color: '#888', marginTop: 10, fontSize: 16 },
-  errorContainer: { alignItems: 'center', padding: 40 },
-  errorText: { color: '#e74c3c', fontSize: 14, textAlign: 'center', fontWeight: '600' },
-  emptyContainer: { alignItems: 'center', padding: 40 },
-  emptyIcon: { fontSize: 50, marginBottom: 16 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.headerBg,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.headerText,
+  },
+  headerBadge: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+  },
+  headerBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+  dateToggleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textPrimary,
+    marginLeft: spacing.sm,
+    paddingVertical: 2,
+  },
+  // Pills
+  pillsRow: {
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  pillActive: {
+    backgroundColor: colors.headerBg,
+    borderColor: colors.headerBg,
+  },
+  pillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  pillTextActive: {
+    color: colors.headerText,
+  },
+  // Date Filter
+  dateFilterCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  dateInputsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  dateInputWrap: {
+    flex: 1,
+  },
+  dateInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  dateInput: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  dateActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  dateActionBtn: {
+    backgroundColor: colors.headerBg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: 10,
+  },
+  dateActionClear: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.headerText,
+  },
+  // States
+  centerState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: spacing['6xl'],
+  },
+  listContent: {
+    paddingTop: spacing.xs,
+    paddingBottom: spacing['5xl'],
+  },
 });
