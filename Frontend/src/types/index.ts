@@ -64,7 +64,7 @@ export type JobSheet = JobSheetRow & {
 /** Mirrors: public.job_updates_with_profile view (or standard table if fields appended) */
 export type JobUpdate = {
   id: string;
-  job_sheet_id: string;
+  job_sheet_id: string | null;
   update_note: string | null;
   status_changed_to: string | null;
   created_at: string;

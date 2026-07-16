@@ -1,33 +1,25 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  Switch,
-  TouchableWithoutFeedback,
-  Keyboard,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Switch,
+  TouchableWithoutFeedback, Keyboard, StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AdminStackParamList } from '../../types';
 import { supabase } from '../../services/supabase';
 import { supabaseAdmin } from '../../services/supabaseAdmin';
 import { navigateToDashboard, navigateBack } from '../../utils/navigationUtils';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
+import { HeaderBar } from '../../components/ui/HeaderBar';
+import { Card } from '../../components/ui/Card';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AddTechnician'>;
 
 export const AddTechnicianScreen = () => {
   const navigation = useNavigation<NavigationProp>();
-
-  // Form state
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -35,325 +27,192 @@ export const AddTechnicianScreen = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
-
-  // UI state
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (fullName.trim().length < 3) {
-      newErrors.fullName = 'Full name must be at least 3 characters.';
-    }
-
-    if (!email.includes('@') || !email.includes('.')) {
-      newErrors.email = 'Please enter a valid email address.';
-    }
-
-    if (phone.trim().length !== 10 || !/^\d+$/.test(phone.trim())) {
-      newErrors.phone = 'Phone number must be exactly 10 digits.';
-    }
-
-    if (username.trim().length < 3 || username.includes(' ')) {
-      newErrors.username = 'Username must be 3+ chars and have no spaces.';
-    }
-
-    if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters.';
-    } else if (!/\d/.test(password)) {
-      newErrors.password = 'Password must contain at least one number.';
-    }
-
-    if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match.';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const e: Record<string, string> = {};
+    if (fullName.trim().length < 3) e.fullName = 'Full name must be at least 3 characters.';
+    if (!email.includes('@') || !email.includes('.')) e.email = 'Enter a valid email address.';
+    if (phone.trim().length !== 10 || !/^\d+$/.test(phone.trim())) e.phone = 'Phone number must be exactly 10 digits.';
+    if (username.trim().length < 3 || username.includes(' ')) e.username = 'Username must be 3+ chars, no spaces.';
+    if (password.length < 8) e.password = 'Password must be at least 8 characters.';
+    else if (!/\d/.test(password)) e.password = 'Password must contain at least one number.';
+    if (password !== confirmPassword) e.confirmPassword = 'Passwords do not match.';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const getPasswordStrength = () => {
-    if (password.length === 0) return null;
-    if (password.length < 8) return 'Weak';
+  const getStrength = (): { label: string; color: string; width: string } | null => {
+    if (!password) return null;
+    if (password.length < 8) return { label: 'Weak', color: colors.error, width: '33%' };
     const hasNumber = /\d/.test(password);
     const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-    if (hasNumber && hasSpecial) return 'Strong';
-    if (hasNumber) return 'Medium';
-    return 'Weak';
+    if (hasNumber && hasSpecial) return { label: 'Strong', color: colors.success, width: '100%' };
+    if (hasNumber) return { label: 'Medium', color: colors.warning, width: '66%' };
+    return { label: 'Weak', color: colors.error, width: '33%' };
   };
 
-  const getStrengthColor = () => {
-    const strength = getPasswordStrength();
-    if (strength === 'Strong') return '#28a745';
-    if (strength === 'Medium') return '#ffc107';
-    return '#dc3545';
-  };
-
-  const handleCreateTechnician = async () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
-
-    Alert.alert(
-      'Confirm Creation',
-      `Create technician account for ${fullName}?\nThey will use email ${email.toLowerCase()} to login.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Create', onPress: performCreation }
-      ]
-    );
+    Alert.alert('Confirm', `Create account for ${fullName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Create', onPress: createUser },
+    ]);
   };
 
-  const performCreation = async () => {
+  const createUser = async () => {
     setLoading(true);
     try {
-      // 1. Check if username already exists
-      const { data: existingUser, error: checkError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('username', username.trim().toLowerCase())
-        .maybeSingle();
-
-      if (checkError) throw checkError;
-      if (existingUser) {
-        setErrors({ ...errors, username: 'This username is already taken.' });
-        setLoading(false);
-        return;
-      }
-
-      // 2. Create Auth User via Admin Client
+      const { data: existing } = await supabase.from('profiles').select('id').eq('username', username.trim().toLowerCase()).maybeSingle();
+      if (existing) { setErrors({ ...errors, username: 'Username taken.' }); setLoading(false); return; }
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: email.trim().toLowerCase(),
-        password: password,
-        email_confirm: true,
+        email: email.trim().toLowerCase(), password, email_confirm: true,
       });
-
       if (authError) {
-        if (authError.message.includes('already registered')) {
-          setErrors({ ...errors, email: 'This email is already registered.' });
-        } else {
-          throw authError;
-        }
-        setLoading(false);
-        return;
+        if (authError.message.includes('already registered')) setErrors({ ...errors, email: 'Email already registered.' });
+        else throw authError;
+        setLoading(false); return;
       }
-
-      if (!authData.user) throw new Error('Failed to create auth user');
-
-      // 3. Insert Profile via Regular Client
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          username: username.trim().toLowerCase(),
-          email: email.trim().toLowerCase(),
-          full_name: fullName.trim(),
-          role: 'user',
-          phone: phone.trim(),
-          is_active: isActive,
-        });
-
-      if (profileError) {
-        // Rollback Auth User
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        throw profileError;
-      }
-
-      Alert.alert(
-        '✅ Success',
-        `${fullName} can now login with their email and password.`,
-        [{ text: 'OK', onPress: () => navigateToDashboard(navigation, 'admin') }]
-      );
+      if (!authData.user) throw new Error('Failed to create user');
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: authData.user.id, username: username.trim().toLowerCase(), email: email.trim().toLowerCase(),
+        full_name: fullName.trim(), role: 'user', phone: phone.trim(), is_active: isActive,
+      });
+      if (profileError) { await supabaseAdmin.auth.admin.deleteUser(authData.user.id); throw profileError; }
+      Alert.alert('Success', `${fullName} can now login.`, [{ text: 'OK', onPress: () => navigateToDashboard(navigation, 'admin') }]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
-      Alert.alert('Error', message);
-    } finally {
-      setLoading(false);
-    }
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed.');
+    } finally { setLoading(false); }
   };
 
-  const strength = getPasswordStrength();
+  const strength = getStrength();
 
-  const content = (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigateBack(navigation)}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add New Technician</Text>
-        <View style={{ width: 50 }} />
-      </View>
-
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* Full Name */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Full Name</Text>
-          <TextInput
-            style={[styles.input, errors.fullName && styles.inputError]}
-            placeholder="Enter full name"
-            value={fullName}
-            onChangeText={setFullName}
-          />
-          {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
-        </View>
-
-        {/* Email */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email Address</Text>
-          <TextInput
-            style={[styles.input, errors.email && styles.inputError]}
-            placeholder="Enter email address"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={email}
-            onChangeText={setEmail}
-          />
-          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-        </View>
-
-        {/* Phone */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            style={[styles.input, errors.phone && styles.inputError]}
-            placeholder="10-digit phone number"
-            keyboardType="numeric"
-            maxLength={10}
-            value={phone}
-            onChangeText={setPhone}
-          />
-          {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-        </View>
-
-        {/* Username */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={[styles.input, errors.username && styles.inputError]}
-            placeholder="e.g. ramesh_kumar"
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-          />
-          {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
-        </View>
-
-        {/* Password */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={[styles.input, errors.password && styles.inputError]}
-            placeholder="Minimum 8 characters"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          {strength && (
-            <View style={styles.strengthContainer}>
-              <View style={[styles.strengthBar, { backgroundColor: getStrengthColor(), width: strength === 'Weak' ? '33%' : strength === 'Medium' ? '66%' : '100%' }]} />
-              <Text style={[styles.strengthText, { color: getStrengthColor() }]}>{strength}</Text>
+  const form = (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <HeaderBar title="Add Technician" onBack={() => navigateBack(navigation)} />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Card>
+          <Field label="Full Name" value={fullName} onChange={setFullName} error={errors.fullName} icon="person-outline" />
+          <Field label="Email Address" value={email} onChange={setEmail} error={errors.email} keyboard="email-address" autoCap="none" icon="mail-outline" />
+          <Field label="Phone Number" value={phone} onChange={setPhone} error={errors.phone} keyboard="phone-pad" maxLen={10} icon="call-outline" />
+          <Field label="Username" value={username} onChange={setUsername} error={errors.username} autoCap="none" icon="at-outline" />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Password</Text>
+            <View style={[styles.inputWrap, errors.password && styles.inputError]}>
+              <Icon name="lock-closed-outline" size={18} color={errors.password ? colors.error : colors.textTertiary} />
+              <TextInput
+                style={styles.fieldInput}
+                placeholder="Min 8 characters"
+                placeholderTextColor={colors.textTertiary}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </View>
+            {strength && (
+              <View style={styles.strengthRow}>
+                <View style={[styles.strengthBar, { backgroundColor: strength.color, width: strength.width as any }]} />
+                <Text style={[styles.strengthText, { color: strength.color }]} allowFontScaling={false}>{strength.label}</Text>
+              </View>
+            )}
+            {errors.password && <Text style={styles.errorText} allowFontScaling={false}>{errors.password}</Text>}
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel} allowFontScaling={false}>Confirm Password</Text>
+            <View style={[styles.inputWrap, errors.confirmPassword && styles.inputError]}>
+              <Icon name="lock-closed-outline" size={18} color={errors.confirmPassword ? colors.error : colors.textTertiary} />
+              <TextInput
+                style={styles.fieldInput}
+                placeholder="Repeat password"
+                placeholderTextColor={colors.textTertiary}
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+            </View>
+            {errors.confirmPassword && <Text style={styles.errorText} allowFontScaling={false}>{errors.confirmPassword}</Text>}
+          </View>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fieldLabel} allowFontScaling={false}>Active Status</Text>
+              <Text style={styles.helperText} allowFontScaling={false}>Inactive users cannot login or be assigned jobs.</Text>
+            </View>
+            <Switch
+              value={isActive}
+              onValueChange={setIsActive}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor={isActive ? colors.headerBg : colors.textTertiary}
+            />
+          </View>
+        </Card>
+        <TouchableOpacity style={[styles.submitBtn, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
+          {loading ? <ActivityIndicator color={colors.headerBg} /> : (
+            <View style={styles.submitContent}>
+              <Icon name="checkmark-circle-outline" size={20} color={colors.headerBg} />
+              <Text style={styles.submitText} allowFontScaling={false}>Create Technician</Text>
             </View>
           )}
-          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-        </View>
-
-        {/* Confirm Password */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Confirm Password</Text>
-          <TextInput
-            style={[styles.input, errors.confirmPassword && styles.inputError]}
-            placeholder="Repeat password"
-            secureTextEntry
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-          />
-          {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
-        </View>
-
-        {/* Active Status */}
-        <View style={[styles.inputGroup, styles.switchGroup]}>
-          <View>
-            <Text style={styles.label}>Active Status</Text>
-            <Text style={styles.helperText}>Inactive technicians cannot login or be assigned jobs.</Text>
-          </View>
-          <Switch
-            value={isActive}
-            onValueChange={setIsActive}
-            trackColor={{ false: '#767577', true: '#FFD700' }}
-            thumbColor={isActive ? '#1a1a2e' : '#f4f3f4'}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.disabledButton]}
-          onPress={handleCreateTechnician}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#1a1a2e" />
-          ) : (
-            <Text style={styles.submitButtonText}>Create Technician</Text>
-          )}
         </TouchableOpacity>
-
-        <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {Platform.OS === 'web' ? content : (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          {content}
-        </TouchableWithoutFeedback>
-      )}
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+      {Platform.OS === 'web' ? form : <TouchableWithoutFeedback onPress={Keyboard.dismiss}>{form}</TouchableWithoutFeedback>}
     </SafeAreaView>
   );
 };
 
+const Field = ({
+  label, value, onChange, error, keyboard, autoCap, maxLen, icon,
+}: {
+  label: string; value: string; onChange: (v: string) => void; error?: string;
+  keyboard?: 'email-address' | 'phone-pad'; autoCap?: 'none'; maxLen?: number; icon: React.ComponentProps<typeof Icon>['name'];
+}) => (
+  <View style={styles.fieldGroup}>
+    <Text style={styles.fieldLabel} allowFontScaling={false}>{label}</Text>
+    <View style={[styles.inputWrap, error && styles.inputError]}>
+      <Icon name={icon} size={18} color={error ? colors.error : colors.textTertiary} />
+      <TextInput
+        style={styles.fieldInput}
+        value={value}
+        onChangeText={onChange}
+        placeholderTextColor={colors.textTertiary}
+        keyboardType={keyboard}
+        autoCapitalize={autoCap}
+        autoCorrect={false}
+        maxLength={maxLen}
+      />
+    </View>
+    {error && <Text style={styles.errorText} allowFontScaling={false}>{error}</Text>}
+  </View>
+);
+
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1a1a2e',
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  content: { padding: spacing.lg, paddingBottom: 120 },
+  fieldGroup: { marginBottom: spacing.lg },
+  fieldLabel: { ...typography.footnote, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs },
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, minHeight: 50, gap: spacing.sm,
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  backButton: { color: '#fff', fontSize: 16 },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  content: { padding: 20 },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 8 },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+  inputError: { borderColor: colors.error },
+  fieldInput: { flex: 1, ...typography.body, color: colors.textPrimary, paddingVertical: spacing.md },
+  errorText: { ...typography.caption1, color: colors.error, marginTop: spacing.xs },
+  strengthRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.sm },
+  strengthBar: { height: 4, borderRadius: 2 },
+  strengthText: { ...typography.caption2, fontWeight: '700' },
+  switchRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: spacing.sm,
   },
-  inputError: { borderColor: '#dc3545' },
-  switchGroup: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
-  helperText: { fontSize: 12, color: '#888', marginTop: 4, maxWidth: '90%' },
-  errorText: { color: '#dc3545', fontSize: 12, marginTop: 4 },
-  submitButton: {
-    backgroundColor: '#FFD700',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-    elevation: 2,
-  },
-  disabledButton: { opacity: 0.7 },
-  submitButtonText: { color: '#1a1a2e', fontWeight: 'bold', fontSize: 17 },
-  strengthContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  strengthBar: { height: 4, borderRadius: 2, marginRight: 8 },
-  strengthText: { fontSize: 12, fontWeight: 'bold' },
+  helperText: { ...typography.caption1, color: colors.textTertiary, marginTop: 2 },
+  submitBtn: { backgroundColor: colors.accent, padding: spacing.lg, borderRadius: radius.md, marginTop: spacing.md, alignItems: 'center' },
+  submitContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  submitText: { ...typography.headline, fontWeight: '700', color: colors.headerBg },
 });

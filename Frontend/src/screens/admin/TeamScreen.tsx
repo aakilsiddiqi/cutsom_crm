@@ -1,24 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  SafeAreaView,
-  Linking,
-  Switch,
-  Alert,
-  Modal,
-  Platform
+  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  RefreshControl, Linking, Switch, Alert, Modal, StatusBar, Animated, Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { UserProfile, AdminStackParamList } from '../../types';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
 
 type NavigationProp = NativeStackNavigationProp<AdminStackParamList, 'AdminTabs'>;
 
@@ -33,52 +25,63 @@ export const TeamScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [errorOccurred, setErrorOccurred] = useState(false);
   const [teamStats, setTeamStats] = useState<TeamMemberStats[]>([]);
-
-  // Reassignment Modal State
   const [reassignModalVisible, setReassignModalVisible] = useState(false);
-  const [techToRemove, setTechToRemove] = useState<{ id: string, name: string } | null>(null);
+  const [techToRemove, setTechToRemove] = useState<{ id: string; name: string } | null>(null);
   const [activeJobsToReassign, setActiveJobsToReassign] = useState<any[]>([]);
   const [availableTechs, setAvailableTechs] = useState<UserProfile[]>([]);
   const [reassignToTechId, setReassignToTechId] = useState('');
 
-  const fetchTeamStats = async (signal: AbortSignal) => {
+  const cacheTs = useRef(0);
+  const CACHE_TTL = 30_000;
+
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(15)).current;
+  const fabScale = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, speed: 50, bounciness: 6, useNativeDriver: true }),
+    ]).start();
+    Animated.spring(fabScale, { toValue: 1, speed: 50, bounciness: 8, useNativeDriver: true }).start();
+  }, []);
+
+  const fetchTeamStats = async (signal: AbortSignal, force: boolean = false) => {
+    if (!force && Date.now() - cacheTs.current < CACHE_TTL) {
+      setLoading(false);
+      return;
+    }
     try {
       if (!signal.aborted) setErrorOccurred(false);
       const { data: techsData, error: techsError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'user');
-
+        .from('profiles').select('*').eq('role', 'user');
       if (techsError) throw techsError;
       const technicians = techsData as UserProfile[];
-
       if (technicians.length === 0) {
         if (!signal.aborted) setTeamStats([]);
         return;
       }
-
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-      const statsPromises = technicians.map(async (tech) => {
-        const [activeRes, completedRes] = await Promise.all([
-          supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).neq('status', 'Completed'),
-          supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).eq('status', 'Completed').gte('completed_at', firstDayOfMonth),
-        ]);
-        return { ...tech, activeJobs: activeRes.count || 0, completedThisMonth: completedRes.count || 0 };
-      });
-
-      const results = await Promise.all(statsPromises);
-      results.sort((a, b) => b.activeJobs - a.activeJobs);
-
-      if (!signal.aborted) setTeamStats(results);
-    } catch (error) {
+      const stats = await Promise.all(
+        technicians.map(async (tech) => {
+          const [activeRes, completedRes] = await Promise.all([
+            supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).neq('status', 'Completed'),
+            supabase.from('job_sheets').select('*', { count: 'exact', head: true }).eq('assigned_to', tech.id).eq('status', 'Completed').gte('completed_at', firstDayOfMonth),
+          ]);
+          return { ...tech, activeJobs: activeRes.count || 0, completedThisMonth: completedRes.count || 0 };
+        })
+      );
+      stats.sort((a, b) => b.activeJobs - a.activeJobs);
+      if (!signal.aborted) {
+        cacheTs.current = Date.now();
+        setTeamStats(stats);
+      }
+    } catch {
       if (!signal.aborted) setErrorOccurred(true);
     } finally {
-      if (!signal.aborted) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      if (!signal.aborted) { setLoading(false); setRefreshing(false); }
     }
   };
 
@@ -90,280 +93,182 @@ export const TeamScreen = () => {
     }, [])
   );
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = () => {
     setRefreshing(true);
-    const ac = new AbortController();
-    fetchTeamStats(ac.signal);
-  }, []);
-
-  const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
+    cacheTs.current = 0;
+    fetchTeamStats(new AbortController().signal, true);
   };
 
+  const handleCall = (phone: string) => Linking.openURL(`tel:${phone}`);
+
   const toggleTechStatus = async (techId: string, currentStatus: boolean, name: string) => {
-    const performUpdate = async () => {
-      try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ is_active: !currentStatus })
-          .eq('id', techId);
-
-        if (error) throw error;
-        
-        setTeamStats(prev => prev.map(t => 
-          t.id === techId ? { ...t, is_active: !currentStatus } : t
-        ));
-      } catch (error) {
-        Alert.alert('Error', 'Failed to update status');
-      }
+    const update = async () => {
+      await supabase.from('profiles').update({ is_active: !currentStatus }).eq('id', techId);
+      setTeamStats(prev => prev.map(t => t.id === techId ? { ...t, is_active: !currentStatus } : t));
     };
-
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`);
-      if (confirmed) {
-        performUpdate();
-      }
-    } else {
-      Alert.alert(
-        'Confirm Status Change',
-        `Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} ${name}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Yes', onPress: performUpdate }
-        ]
-      );
-    }
+    Alert.alert('Confirm', `${currentStatus ? 'Deactivate' : 'Activate'} ${name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Yes', onPress: update },
+    ]);
   };
 
   const handleRemovePress = async (techId: string, name: string) => {
     try {
-      const { data: activeJobs, error } = await supabase
-        .from('job_sheets')
-        .select('id, registration_number')
-        .eq('assigned_to', techId)
-        .neq('status', 'Completed');
-
-      if (error) throw error;
-
+      const { data: activeJobs } = await supabase
+        .from('job_sheets').select('id, registration_number').eq('assigned_to', techId).neq('status', 'Completed');
       if (!activeJobs || activeJobs.length === 0) {
-        if (Platform.OS === 'web') {
-          const confirmed = window.confirm(`Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`);
-          if (confirmed) {
-            deactivateUser(techId, name);
-          }
-        } else {
-          Alert.alert(
-            'Remove Technician',
-            `Remove ${name} from the team? Their account will be deactivated. Completed job history is preserved.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Remove', 
-                style: 'destructive', 
-                onPress: () => deactivateUser(techId, name) 
-              }
-            ]
-          );
-        }
+        const deactivate = () => { setLoading(true); supabase.from('profiles').update({ is_active: false }).eq('id', techId); fetchTeamStats(new AbortController().signal); };
+        Alert.alert('Remove Technician', `Remove ${name}? Account deactivated, history preserved.`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: deactivate },
+        ]);
       } else {
-        const { data: otherTechs } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('role', 'user')
-          .eq('is_active', true)
-          .neq('id', techId);
-        
-        setAvailableTechs((otherTechs as UserProfile[]) || []);
+        const { data: others } = await supabase.from('profiles').select('*').eq('role', 'user').eq('is_active', true).neq('id', techId);
+        setAvailableTechs((others as UserProfile[]) || []);
         setActiveJobsToReassign(activeJobs);
         setTechToRemove({ id: techId, name });
         setReassignToTechId('');
         setReassignModalVisible(true);
       }
-    } catch {
-      Alert.alert('Error', 'Failed to fetch active jobs.');
-    }
-  };
-
-  const deactivateUser = async (techId: string, name: string) => {
-    setLoading(true);
-    await supabase.from('profiles').update({ is_active: false }).eq('id', techId);
-    Alert.alert('✅ Technician Removed', `${name} has been deactivated.`);
-    const ac = new AbortController();
-    fetchTeamStats(ac.signal);
+    } catch { Alert.alert('Error', 'Failed to fetch active jobs.'); }
   };
 
   const handleReassignAndRemove = async () => {
-    if (!techToRemove || !reassignToTechId) {
-      Alert.alert('Error', 'Please select a technician to reassign jobs to.');
-      return;
-    }
-    
+    if (!techToRemove || !reassignToTechId) return Alert.alert('Error', 'Select technician.');
     setLoading(true);
     setReassignModalVisible(false);
-    
     try {
-      // Reassign jobs
-      const { error: updateJobsError } = await supabase
-        .from('job_sheets')
-        .update({ assigned_to: reassignToTechId })
-        .eq('assigned_to', techToRemove.id)
-        .neq('status', 'Completed');
-        
-      if (updateJobsError) throw updateJobsError;
-
-      // Deactivate
-      const { error: deactivateError } = await supabase
-        .from('profiles')
-        .update({ is_active: false })
-        .eq('id', techToRemove.id);
-
-      if (deactivateError) throw deactivateError;
-
-      const newTechName = availableTechs.find(t => t.id === reassignToTechId)?.full_name || 'the selected technician';
-        
-      Alert.alert('✅ Success', `Jobs reassigned to ${newTechName} and ${techToRemove.name} has been deactivated.`);
-      const ac2 = new AbortController();
-      fetchTeamStats(ac2.signal);
-    } catch {
-      Alert.alert('Error', 'Failed to complete the process.');
-      setLoading(false);
-    }
+      await supabase.from('job_sheets').update({ assigned_to: reassignToTechId }).eq('assigned_to', techToRemove.id).neq('status', 'Completed');
+      await supabase.from('profiles').update({ is_active: false }).eq('id', techToRemove.id);
+      Alert.alert('Success', `Jobs reassigned, ${techToRemove.name} deactivated.`);
+      fetchTeamStats(new AbortController().signal);
+    } catch { Alert.alert('Error', 'Failed.'); setLoading(false); }
   };
 
   const renderItem = ({ item }: { item: TeamMemberStats }) => (
     <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.nameText}>{item.full_name || item.username}</Text>
+      <View style={styles.cardTop}>
+        <View style={styles.cardLeft}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText} allowFontScaling={false}>
+              {(item.full_name || item.username || '?').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.cardInfo}>
+            <Text style={styles.techName} allowFontScaling={false}>{item.full_name || item.username}</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: item.is_active ? colors.success : colors.error }]} />
+              <Text style={[styles.statusLabel, { color: item.is_active ? colors.success : colors.error }]} allowFontScaling={false}>
+                {item.is_active ? 'Active' : 'Inactive'}
+              </Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.toggleContainer}>
-          <Text style={[styles.statusText, { color: item.is_active ? '#28a745' : '#dc3545' }]}>
-            {item.is_active ? 'Active' : 'Inactive'}
-          </Text>
-          <Switch
-            value={item.is_active}
-            onValueChange={() => toggleTechStatus(item.id, item.is_active || false, item.full_name || item.username)}
-            trackColor={{ false: '#767577', true: '#FFD700' }}
-            thumbColor={item.is_active ? '#1a1a2e' : '#f4f3f4'}
-            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-          />
-        </View>
+        <Switch
+          value={item.is_active}
+          onValueChange={() => toggleTechStatus(item.id, item.is_active || false, item.full_name || item.username)}
+          trackColor={{ false: colors.border, true: colors.accent }}
+          thumbColor={item.is_active ? colors.headerBg : colors.textTertiary}
+        />
       </View>
-      
-      {item.phone ? (
-        <TouchableOpacity activeOpacity={0.7} onPress={() => handleCall(item.phone!)} style={styles.phoneButton}>
-          <Text style={styles.phoneText}>📞 {item.phone}</Text>
-        </TouchableOpacity>
-      ) : (
-        <Text style={styles.noPhoneText}>No phone number</Text>
-      )}
 
-      <View style={styles.actionRow}>
-        <TouchableOpacity 
-          style={styles.removeBtn} 
-          onPress={() => handleRemovePress(item.id, item.full_name || item.username)}
-        >
-          <Text style={styles.removeBtnText}>🗑️ Remove</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.phoneRow} onPress={() => item.phone && handleCall(item.phone)} disabled={!item.phone}>
+        <Icon name="call-outline" size={14} color={item.phone ? colors.info : colors.textTertiary} />
+        <Text style={[styles.phoneText, !item.phone && { color: colors.textTertiary }]} allowFontScaling={false}>
+          {item.phone || 'No phone'}
+        </Text>
+      </TouchableOpacity>
 
       <View style={styles.statsRow}>
-        <View style={[styles.badge, { backgroundColor: '#CCE5FF' }]}>
-          <Text style={[styles.badgeText, { color: '#004085' }]}>Active Jobs: {item.activeJobs}</Text>
+        <View style={styles.stat}>
+          <Text style={styles.statValue} allowFontScaling={false}>{item.activeJobs}</Text>
+          <Text style={styles.statLabel} allowFontScaling={false}>Active</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: '#D4EDDA' }]}>
-          <Text style={[styles.badgeText, { color: '#155724' }]}>Completed This Month: {item.completedThisMonth}</Text>
+        <View style={[styles.stat, styles.statGreen]}>
+          <Text style={[styles.statValue, { color: colors.success }]} allowFontScaling={false}>{item.completedThisMonth}</Text>
+          <Text style={[styles.statLabel, { color: colors.success }]} allowFontScaling={false}>This Month</Text>
         </View>
       </View>
+
+      <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemovePress(item.id, item.full_name || item.username)}>
+        <Icon name="trash-outline" size={14} color={colors.error} />
+        <Text style={styles.removeText} allowFontScaling={false}>Remove</Text>
+      </TouchableOpacity>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Our Team</Text>
-        <TouchableOpacity 
-          style={styles.headerAddButton}
-          onPress={() => navigation.navigate('AddTechnician')}
-        >
-          <Text style={styles.headerAddButtonText}>➕ Add</Text>
+        <Text style={styles.headerTitle} allowFontScaling={false}>Our Team</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('AddTechnician')}>
+          <Icon name="person-add-outline" size={18} color="#000" />
+          <Text style={styles.addBtnText} allowFontScaling={false}>Add</Text>
         </TouchableOpacity>
       </View>
-
-      <View style={styles.container}>
+      <View style={styles.body}>
         {loading && !refreshing ? (
-          <ActivityIndicator size="large" color="#FFD700" style={{ marginTop: 40 }} />
+          <View style={styles.center}><ActivityIndicator size="large" color={colors.accent} /></View>
         ) : errorOccurred ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>⚠️ Failed to load data. Pull down to refresh.</Text>
+          <View style={styles.center}>
+            <Icon name="cloud-offline-outline" size={48} color={colors.textTertiary} />
+            <Text style={styles.errorText} allowFontScaling={false}>Failed to load. Pull down to refresh.</Text>
           </View>
         ) : (
           <FlatList
             data={teamStats}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
-            contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>👥</Text>
-                <Text style={styles.emptyText}>No technicians added yet.</Text>
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <Icon name="people-outline" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyText} allowFontScaling={false}>No technicians added yet.</Text>
               </View>
-            )}
+            }
           />
         )}
       </View>
+      <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+        <TouchableOpacity style={styles.fabInner} onPress={() => navigation.navigate('AddTechnician')} activeOpacity={0.8}>
+          <Icon name="add" size={28} color="#000" />
+        </TouchableOpacity>
+      </Animated.View>
 
-      <TouchableOpacity 
-        style={styles.fab}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('AddTechnician')}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-
-      {/* Reassign Modal */}
-      <Modal
-        visible={reassignModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setReassignModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reassign Active Jobs</Text>
-            <Text style={styles.modalSubtitle}>
-              {techToRemove?.name} has {activeJobsToReassign.length} active jobs.
+      <Modal visible={reassignModalVisible} transparent animationType="slide" onRequestClose={() => setReassignModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle} allowFontScaling={false}>Reassign Active Jobs</Text>
+            <Text style={styles.sheetSubtitle} allowFontScaling={false}>
+              {techToRemove?.name} has {activeJobsToReassign.length} active job{activeJobsToReassign.length !== 1 ? 's' : ''}.
             </Text>
-            
-            <View style={styles.activeJobsList}>
-              {activeJobsToReassign.slice(0, 3).map(job => (
-                <Text key={job.id} style={styles.activeJobItem}>• {job.registration_number}</Text>
+            <View style={styles.jobsList}>
+              {activeJobsToReassign.slice(0, 3).map(j => (
+                <Text key={j.id} style={styles.jobItem} allowFontScaling={false}>· {j.registration_number}</Text>
               ))}
               {activeJobsToReassign.length > 3 && (
-                <Text style={styles.activeJobItem}>...and {activeJobsToReassign.length - 3} more</Text>
+                <Text style={styles.jobItem} allowFontScaling={false}>· ...and {activeJobsToReassign.length - 3} more</Text>
               )}
             </View>
-
-            <Text style={styles.modalLabel}>Reassign all to:</Text>
+            <Text style={styles.sheetLabel} allowFontScaling={false}>Reassign all to:</Text>
             <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={reassignToTechId}
-                onValueChange={(val) => setReassignToTechId(val)}
-              >
+              <Picker selectedValue={reassignToTechId} onValueChange={setReassignToTechId}>
                 <Picker.Item label="-- Select Technician --" value="" />
-                {availableTechs.map(tech => (
-                  <Picker.Item key={tech.id} label={tech.full_name || tech.username} value={tech.id} />
+                {availableTechs.map(t => (
+                  <Picker.Item key={t.id} label={t.full_name || t.username} value={t.id} />
                 ))}
               </Picker>
             </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setReassignModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+            <View style={styles.sheetActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setReassignModalVisible(false)}>
+                <Text style={styles.cancelBtnText} allowFontScaling={false}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalReassignBtn} onPress={handleReassignAndRemove}>
-                <Text style={styles.modalReassignText}>Reassign & Remove</Text>
+              <TouchableOpacity style={styles.reassignBtn} onPress={handleReassignAndRemove}>
+                <Text style={styles.reassignBtnText} allowFontScaling={false}>Reassign & Remove</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -374,83 +279,79 @@ export const TeamScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
-  header: { 
-    padding: 20, 
-    backgroundColor: '#1a1a2e',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md, backgroundColor: colors.headerBg,
+    borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
   },
-  headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  listContent: { padding: 16 },
-  card: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  nameText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  toggleContainer: { alignItems: 'flex-end', marginLeft: 10 },
-  statusText: { fontSize: 11, fontWeight: 'bold', marginBottom: 2 },
-  phoneButton: { marginBottom: 8 },
-  phoneText: { color: '#0066cc', fontSize: 15, fontWeight: '500' },
-  noPhoneText: { color: '#888', fontSize: 14, marginBottom: 8, fontStyle: 'italic' },
-  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
-  removeBtn: { backgroundColor: '#ffeeee', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#ffcccc' },
-  removeBtnText: { color: '#dc3545', fontWeight: 'bold', fontSize: 13 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  badge: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexGrow: 1, alignItems: 'center' },
-  badgeText: { fontWeight: 'bold', fontSize: 14 },
-  emptyContainer: { alignItems: 'center', marginTop: 60, padding: 20 },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyText: { color: '#666', fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  errorContainer: { alignItems: 'center', padding: 40 },
-  errorText: { color: '#e74c3c', fontSize: 14, textAlign: 'center', fontWeight: '600' },
-  headerAddButton: {
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FFD700',
+  headerTitle: { fontSize: 22, fontWeight: '700', color: colors.headerText },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accent,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 10, gap: spacing.xs,
   },
-  headerAddButtonText: {
-    color: '#FFD700',
-    fontWeight: 'bold',
-    fontSize: 14,
+  addBtnText: { fontSize: 14, fontWeight: '600', color: '#000' },
+  body: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing['3xl'], gap: spacing.md },
+  list: { padding: spacing.lg, paddingBottom: 100 },
+  card: {
+    backgroundColor: colors.surface, borderRadius: 20, padding: spacing.lg,
+    marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
   },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
+  cardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: spacing.md },
+  avatar: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { fontSize: 18, fontWeight: '700', color: '#000' },
+  cardInfo: { flex: 1 },
+  techName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusLabel: { fontSize: 12, fontWeight: '600' },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md, gap: spacing.sm },
+  phoneText: { fontSize: 14, color: colors.info },
+  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  stat: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.sm + 2, borderRadius: 10, gap: spacing.xs,
+    backgroundColor: colors.statusProgressBg,
+  },
+  statGreen: { backgroundColor: colors.statusCompletedBg },
+  statValue: { fontSize: 16, fontWeight: '700', color: colors.statusProgress },
+  statLabel: { fontSize: 12, fontWeight: '600', color: colors.statusProgress },
+  removeBtn: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 4, padding: spacing.xs,
+  },
+  removeText: { fontSize: 13, color: colors.error, fontWeight: '600' },
+  errorText: { fontSize: 15, color: colors.textSecondary, textAlign: 'center' },
+  emptyText: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
   fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFD700',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 10,
-    zIndex: 999,
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 100 : 90, right: spacing.xl,
+    shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 12,
+    zIndex: 100,
   },
-  fabText: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
-    lineHeight: 38,
+  fabInner: {
+    width: 60, height: 60, borderRadius: 30, backgroundColor: colors.accent,
+    justifyContent: 'center', alignItems: 'center',
   },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12, width: '100%', maxWidth: 400 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-  modalSubtitle: { fontSize: 15, color: '#e74c3c', marginBottom: 16, fontWeight: '500' },
-  activeJobsList: { backgroundColor: '#f9f9f9', padding: 12, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
-  activeJobItem: { fontSize: 14, color: '#555', marginBottom: 4 },
-  modalLabel: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-  pickerContainer: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, marginBottom: 24, backgroundColor: '#fff' },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-  modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#f0f0f0' },
-  modalCancelText: { color: '#333', fontWeight: 'bold' },
-  modalReassignBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#e74c3c' },
-  modalReassignText: { color: '#fff', fontWeight: 'bold' },
+  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: spacing.xl, maxHeight: '80%',
+  },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.lg },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.xs },
+  sheetSubtitle: { fontSize: 14, color: colors.error, marginBottom: spacing.md, fontWeight: '500' },
+  jobsList: { backgroundColor: colors.bg, padding: spacing.md, borderRadius: 12, marginBottom: spacing.lg },
+  jobItem: { fontSize: 14, color: colors.textSecondary, marginBottom: 2 },
+  sheetLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginBottom: spacing.sm },
+  pickerContainer: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xl, backgroundColor: colors.surface },
+  sheetActions: { flexDirection: 'row', gap: spacing.md },
+  cancelBtn: { flex: 1, padding: spacing.md, alignItems: 'center', backgroundColor: colors.bg, borderRadius: 12 },
+  cancelBtnText: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
+  reassignBtn: { flex: 1, padding: spacing.md, alignItems: 'center', backgroundColor: colors.error, borderRadius: 12 },
+  reassignBtnText: { fontSize: 16, fontWeight: '600', color: colors.textInverse },
 });

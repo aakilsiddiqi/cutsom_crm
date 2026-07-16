@@ -1,14 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator,
-  Linking,
-  Image,
-  Modal
+import React, { useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  Linking, Image, Modal, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -16,11 +9,23 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { RootStackParamList, JobSheet, JobUpdate } from '../../types';
 import { navigateBack } from '../../utils/navigationUtils';
-import { getStatusColors } from '../../utils/constants';
 import { formatDate, timeAgo } from '../../utils/formatting';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
+import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Card } from '../../components/ui/Card';
+import { HeaderBar } from '../../components/ui/HeaderBar';
+import { SectionHeader } from '../../components/ui/SectionHeader';
 
 type DetailRouteProp = RouteProp<RootStackParamList, 'JobSheetDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'JobSheetDetail'>;
+
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  'In Queue': { bg: colors.statusQueueBg, text: colors.statusQueue },
+  'In Progress': { bg: colors.statusProgressBg, text: colors.statusProgress },
+  Completed: { bg: colors.statusCompletedBg, text: colors.statusCompleted },
+  'On Hold': { bg: colors.statusHoldBg, text: colors.statusHold },
+};
 
 export const JobSheetDetailScreen = () => {
   const route = useRoute<DetailRouteProp>();
@@ -30,8 +35,6 @@ export const JobSheetDetailScreen = () => {
   const [jobSheet, setJobSheet] = useState<JobSheet | null>(null);
   const [jobUpdates, setJobUpdates] = useState<JobUpdate[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Image Viewer State
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
@@ -39,516 +42,234 @@ export const JobSheetDetailScreen = () => {
     try {
       if (!signal.aborted) setLoading(true);
       const { data: jobData, error: jobError } = await supabase
-        .from('job_sheets')
-        .select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*)`)
-        .eq('id', jobSheetId)
-        .single();
-
+        .from('job_sheets').select(`*, assignee:profiles!job_sheets_assigned_to_fkey(*)`).eq('id', jobSheetId).single();
       if (jobError) throw jobError;
-      
       const { data: updatesData, error: updatesError } = await supabase
-        .from('job_updates_with_profile')
-        .select('*')
-        .eq('job_sheet_id', jobSheetId)
-        .order('created_at', { ascending: false });
-
+        .from('job_updates_with_profile').select('*').eq('job_sheet_id', jobSheetId).order('created_at', { ascending: false });
       if (updatesError) throw updatesError;
-
-      if (!signal.aborted) {
-        setJobSheet(jobData as JobSheet);
-        setJobUpdates(updatesData as JobUpdate[]);
-      }
-    } catch (error) {
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
+      if (!signal.aborted) { setJobSheet(jobData as JobSheet); setJobUpdates(updatesData as JobUpdate[]); }
+    } catch { } finally { if (!signal.aborted) setLoading(false); }
   };
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       const ac = new AbortController();
       fetchJobDetails(ac.signal);
       return () => ac.abort();
     }, [jobSheetId])
   );
 
-  const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
-  };
+  const handleCall = (phone: string) => Linking.openURL(`tel:${phone}`);
+
+  const InfoRow = ({ label, value, link }: { label: string; value: string; link?: string }) => (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel} allowFontScaling={false}>{label}</Text>
+      {link ? (
+        <TouchableOpacity onPress={() => Linking.openURL(link)}>
+          <Text style={styles.infoLink} allowFontScaling={false}>{value}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.infoValue} allowFontScaling={false}>{value}</Text>
+      )}
+    </View>
+  );
 
   if (loading || !jobSheet) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1a1a2e" />
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+        <View style={styles.center}><ActivityIndicator size="large" color={colors.accent} /></View>
+      </SafeAreaView>
     );
   }
 
-  const statusColors = getStatusColors(jobSheet.status);
-
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigateBack(navigation)} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} allowFontScaling={false}>Job Sheet Details</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        
-        {/* SECTION 1: Header */}
-        <View style={styles.headerSection}>
-          <Text style={styles.registrationLarge} allowFontScaling={false}>{jobSheet.registration_number}</Text>
-          {jobSheet.serial_number && (
-            <Text style={styles.serialNumber} allowFontScaling={false}>Serial: {jobSheet.serial_number}</Text>
-          )}
-
-          <View style={styles.badgesContainer}>
-            <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
-              <Text style={[styles.badgeText, { color: statusColors.text }]} allowFontScaling={false}>{jobSheet.status}</Text>
-            </View>
-            
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
+      <HeaderBar title="Job Details" onBack={() => navigateBack(navigation)} />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Card>
+          <Text style={styles.reg} allowFontScaling={false}>{jobSheet.registration_number}</Text>
+          {jobSheet.serial_number && <Text style={styles.serial} allowFontScaling={false}>Serial: {jobSheet.serial_number}</Text>}
+          <View style={styles.badges}>
+            <StatusBadge status={jobSheet.status} size="md" />
             {jobSheet.service_location && (
-              <View style={[styles.badge, styles.locationBadge]}>
-                <Text style={styles.locationBadgeText} allowFontScaling={false}>
-                  {jobSheet.service_location === 'Workshop' ? '🏭 Workshop' : '📍 On-Site'}
-                </Text>
+              <View style={styles.pill}>
+                <Icon name={jobSheet.service_location === 'Workshop' ? 'business-outline' : 'location-outline'} size={12} color={colors.textSecondary} />
+                <Text style={styles.pillText} allowFontScaling={false}>{jobSheet.service_location}</Text>
               </View>
             )}
-
             {jobSheet.priority === 'Urgent' && (
-              <View style={[styles.badge, styles.urgentBadge]}>
-                <Text style={styles.urgentBadgeText} allowFontScaling={false}>⚡ Urgent</Text>
+              <View style={[styles.pill, { backgroundColor: colors.errorBg, borderColor: colors.error }]}>
+                <Icon name="flash-outline" size={12} color={colors.error} />
+                <Text style={[styles.pillText, { color: colors.error }]} allowFontScaling={false}>Urgent</Text>
               </View>
             )}
           </View>
-
-          <Text style={styles.dateText} allowFontScaling={false}>{formatDate(jobSheet.entry_date_time)}</Text>
-
+          <Text style={styles.date} allowFontScaling={false}>{formatDate(jobSheet.entry_date_time)}</Text>
           {jobSheet.admin_instructions && (
-            <View style={styles.instructionBox}>
-              <Text style={styles.instructionTitle} allowFontScaling={false}>🔔 Admin Instructions</Text>
-              <Text style={styles.instructionText}>{jobSheet.admin_instructions}</Text>
+            <View style={styles.instrBox}>
+              <View style={styles.instrHeader}>
+                <Icon name="information-circle-outline" size={16} color={colors.accentDark} />
+                <Text style={styles.instrTitle} allowFontScaling={false}>Admin Instructions</Text>
+              </View>
+              <Text style={styles.instrText} allowFontScaling={false}>{jobSheet.admin_instructions}</Text>
             </View>
           )}
-        </View>
+        </Card>
 
-        {/* SECTION 2: Info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} allowFontScaling={false}>Customer & Machine Info</Text>
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel} allowFontScaling={false}>Customer</Text>
-              <Text style={styles.infoValue}>{jobSheet.customer_name || 'N/A'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel} allowFontScaling={false}>Mobile</Text>
-              {jobSheet.customer_mobile ? (
-                <TouchableOpacity onPress={() => handleCall(jobSheet.customer_mobile!)}>
-                  <Text style={[styles.infoValue, styles.linkText]}>{jobSheet.customer_mobile}</Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.infoValue}>N/A</Text>
-              )}
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel} allowFontScaling={false}>Model</Text>
-              <Text style={styles.infoValue}>{jobSheet.machine_model || 'N/A'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel} allowFontScaling={false}>Assigned Tech</Text>
-              <Text style={styles.infoValue}>
-                {jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'}
-              </Text>
-            </View>
-          </View>
-        </View>
+        <SectionHeader title="Customer & Machine" />
+        <Card>
+          <InfoRow label="Customer" value={jobSheet.customer_name || 'N/A'} />
+          <InfoRow label="Mobile" value={jobSheet.customer_mobile || 'N/A'} link={jobSheet.customer_mobile ? `tel:${jobSheet.customer_mobile}` : undefined} />
+          <InfoRow label="Model" value={jobSheet.machine_model || 'N/A'} />
+          <InfoRow label="Technician" value={jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Unassigned'} />
+        </Card>
 
-        {/* SECTION 3: Issues */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} allowFontScaling={false}>Issues & Description</Text>
-          <View style={styles.infoCard}>
-            <Text style={styles.descriptionText}>{jobSheet.issues_description || 'No description provided.'}</Text>
-          </View>
-        </View>
+        <SectionHeader title="Issues & Description" />
+        <Card>
+          <Text style={styles.descText} allowFontScaling={false}>{jobSheet.issues_description || 'No description provided.'}</Text>
+        </Card>
 
-        {/* SECTION 4: Parts */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} allowFontScaling={false}>Parts Information</Text>
-          <View style={styles.infoCard}>
-            <Text style={styles.subTitle} allowFontScaling={false}>Parts Needed:</Text>
-            {jobSheet.parts_needed && jobSheet.parts_needed.length > 0 ? (
-              jobSheet.parts_needed.map((part, idx) => (
-                <Text key={idx} style={styles.listItem}>• {part}</Text>
-              ))
-            ) : (
-              <Text style={styles.emptyListText}>None specified</Text>
-            )}
-            
-            <View style={styles.divider} />
+        <SectionHeader title="Parts Information" />
+        <Card>
+          <Text style={styles.subLabel} allowFontScaling={false}>Parts Needed</Text>
+          {jobSheet.parts_needed && jobSheet.parts_needed.length > 0
+            ? jobSheet.parts_needed.map((p, i) => <Text key={i} style={styles.bullet} allowFontScaling={false}>· {p}</Text>)
+            : <Text style={styles.noneText} allowFontScaling={false}>None specified</Text>}
+          <View style={styles.divider} />
+          <Text style={styles.subLabel} allowFontScaling={false}>Parts Used</Text>
+          {jobSheet.parts_used && jobSheet.parts_used.length > 0
+            ? jobSheet.parts_used.map((p, i) => <Text key={i} style={styles.bullet} allowFontScaling={false}>· {p.name} (Qty: {p.quantity})</Text>)
+            : <Text style={styles.noneText} allowFontScaling={false}>None recorded</Text>}
+        </Card>
 
-            <Text style={styles.subTitle} allowFontScaling={false}>Parts Used:</Text>
-            {jobSheet.parts_used && jobSheet.parts_used.length > 0 ? (
-              jobSheet.parts_used.map((part, idx) => (
-                <Text key={idx} style={styles.listItem}>• {part.name} (Qty: {part.quantity})</Text>
-              ))
-            ) : (
-              <Text style={styles.emptyListText}>None recorded</Text>
-            )}
-          </View>
-        </View>
-
-        {/* SECTION 5: Photos */}
         {jobSheet.photos && jobSheet.photos.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle} allowFontScaling={false}>Photos</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {jobSheet.photos.map((photoUrl, idx) => (
-                <TouchableOpacity 
-                  key={idx} 
-                  onPress={() => {
-                    setSelectedImage(photoUrl);
-                    setModalVisible(true);
-                  }}
-                >
-                  <Image source={{ uri: photoUrl }} style={styles.thumbnail} />
+          <>
+            <SectionHeader title="Photos" subtitle={`${jobSheet.photos.length} images`} />
+            <View style={styles.photoStrip}>
+              {jobSheet.photos.map((url, idx) => (
+                <TouchableOpacity key={idx} onPress={() => { setSelectedImage(url); setModalVisible(true); }}>
+                  <Image source={{ uri: url }} style={styles.photo} />
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-          </View>
+            </View>
+          </>
         )}
 
-        {/* SECTION 6: Activity Log */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} allowFontScaling={false}>Activity Log</Text>
-          {jobUpdates.length > 0 ? (
-            jobUpdates.map((update) => (
-              <View key={update.id} style={styles.logCard}>
-                <View style={styles.logHeader}>
-                  <Text style={styles.logUser}>{update.updated_by_name || 'Unknown User'}</Text>
-                  <Text style={styles.logTime}>{timeAgo(update.created_at)}</Text>
+        <SectionHeader title="Activity Log" subtitle={`${jobUpdates.length} entries`} />
+        {jobUpdates.length === 0 ? (
+          <Card>
+            <View style={styles.emptyLog}>
+              <Icon name="time-outline" size={24} color={colors.textTertiary} />
+              <Text style={styles.emptyLogText} allowFontScaling={false}>No activity recorded</Text>
+            </View>
+          </Card>
+        ) : (
+          jobUpdates.map(u => (
+            <Card key={u.id} padded={false}>
+              <View style={styles.logEntry}>
+                <View style={styles.logDot} />
+                <View style={styles.logContent}>
+                  <View style={styles.logHeader}>
+                    <Text style={styles.logActor} allowFontScaling={false}>{u.updated_by_name || 'Unknown'}</Text>
+                    <Text style={styles.logTime} allowFontScaling={false}>{timeAgo(u.created_at)}</Text>
+                  </View>
+                  {u.status_changed_to && (
+                    <Text style={[styles.logStatus, { color: (STATUS_COLORS[u.status_changed_to] || {}).text || colors.info }]} allowFontScaling={false}>
+                      → {u.status_changed_to}
+                    </Text>
+                  )}
+                  {u.update_note && <Text style={styles.logNote} allowFontScaling={false}>{u.update_note}</Text>}
                 </View>
-                {update.status_changed_to && (
-                  <Text style={styles.logStatusChange}>Status → {update.status_changed_to}</Text>
-                )}
-                {update.update_note && (
-                  <Text style={styles.logNote}>{update.update_note}</Text>
-                )}
               </View>
-            ))
-          ) : (
-            <Text style={styles.emptyListText}>No activity recorded yet.</Text>
-          )}
-        </View>
-
-        <View style={{ height: 40 }} />
+            </Card>
+          ))
+        )}
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Fixed Bottom Action Buttons */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity 
-          style={styles.editButton} 
-          onPress={() => navigation.navigate('EditJobSheet', { jobSheetId })}
-        >
-          <Text style={styles.buttonTextWhite} allowFontScaling={false}>Edit Job Sheet</Text>
+        <TouchableOpacity style={styles.editBtn} onPress={() => navigation.navigate('EditJobSheet', { jobSheetId })} activeOpacity={0.8}>
+          <Icon name="create-outline" size={18} color={colors.textInverse} />
+          <Text style={styles.bottomBtnText} allowFontScaling={false}>Edit</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.aiButton} onPress={() => {}}>
-          <Text style={styles.buttonTextWhite} allowFontScaling={false}>Get AI Help</Text>
+        <TouchableOpacity style={styles.aiBtn} activeOpacity={0.8}>
+          <Icon name="sparkles-outline" size={18} color={colors.headerBg} />
+          <Text style={[styles.bottomBtnText, { color: colors.headerBg }]} allowFontScaling={false}>AI Help</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Full Screen Image Modal */}
-      <Modal
-        visible={modalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={() => setModalVisible(false)}
-          >
-            <Text style={styles.closeButtonText} allowFontScaling={false}>✕ Close</Text>
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.imageOverlay}>
+          <TouchableOpacity style={styles.imageClose} onPress={() => setModalVisible(false)}>
+            <Icon name="close-outline" size={28} color={colors.textInverse} />
           </TouchableOpacity>
-          {selectedImage && (
-            <Image 
-              source={{ uri: selectedImage }} 
-              style={styles.fullScreenImage} 
-              resizeMode="contain" 
-            />
-          )}
-        </SafeAreaView>
+          {selectedImage && <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" />}
+        </View>
       </Modal>
-
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scroll: { padding: spacing.lg, paddingBottom: 80 },
+  reg: { ...typography.title1, color: colors.textPrimary, marginBottom: spacing.xs },
+  serial: { ...typography.subhead, color: colors.textSecondary, marginBottom: spacing.sm },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm, paddingVertical: 3,
+    borderRadius: radius.full, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, gap: 4,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1a1a2e',
-  },
-  backBtn: {
-    padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 8,
-  },
-  backBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFD700',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 100, // Space for bottom bar
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerSection: {
-    marginBottom: 20,
-  },
-  registrationLarge: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
-  },
-  serialNumber: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-  },
-  badgesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  badgeText: {
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  locationBadge: {
-    backgroundColor: '#e9ecef',
-    borderWidth: 1,
-    borderColor: '#ced4da',
-  },
-  locationBadgeText: {
-    color: '#495057',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  urgentBadge: {
-    backgroundColor: '#FF4444',
-  },
-  urgentBadgeText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  dateText: {
-    color: '#666',
-    fontSize: 14,
-  },
-  instructionBox: {
-    backgroundColor: '#fff3cd',
-    borderWidth: 1,
-    borderColor: '#ffeeba',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  instructionTitle: {
-    fontWeight: 'bold',
-    color: '#856404',
-    marginBottom: 4,
-  },
-  instructionText: {
-    color: '#856404',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-    paddingBottom: 4,
-  },
-  infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
+  pillText: { ...typography.caption2, color: colors.textSecondary, fontWeight: '600' },
+  date: { ...typography.footnote, color: colors.textSecondary },
+  instrBox: { backgroundColor: colors.accentLight, padding: spacing.md, borderRadius: radius.md, marginTop: spacing.md, borderWidth: 1, borderColor: colors.accent },
+  instrHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs, gap: spacing.xs },
+  instrTitle: { ...typography.footnote, fontWeight: '700', color: colors.accentDark },
+  instrText: { ...typography.footnote, color: colors.accentDark, lineHeight: 18 },
   infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
-  infoLabel: {
-    color: '#666',
-    fontSize: 15,
-  },
-  infoValue: {
-    fontWeight: '500',
-    color: '#333',
-    fontSize: 15,
-  },
-  linkText: {
-    color: '#0066cc',
-    textDecorationLine: 'underline',
-  },
-  descriptionText: {
-    fontSize: 15,
-    color: '#444',
-    lineHeight: 22,
-  },
-  subTitle: {
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-    fontSize: 15,
-  },
-  listItem: {
-    fontSize: 15,
-    color: '#444',
-    marginBottom: 4,
-    marginLeft: 8,
-  },
-  emptyListText: {
-    color: '#999',
-    fontStyle: 'italic',
-    marginBottom: 8,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 12,
-  },
-  thumbnail: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginRight: 10,
-    backgroundColor: '#ccc',
-  },
-  logCard: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: '#1a1a2e',
-  },
-  logHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  logUser: {
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  logTime: {
-    color: '#888',
-    fontSize: 12,
-  },
-  logStatusChange: {
-    fontWeight: '600',
-    color: '#28a745',
-    marginBottom: 2,
-  },
-  logNote: {
-    color: '#555',
-  },
+  infoLabel: { ...typography.subhead, color: colors.textSecondary },
+  infoValue: { ...typography.subhead, color: colors.textPrimary, fontWeight: '500', flexShrink: 1, textAlign: 'right' },
+  infoLink: { ...typography.subhead, color: colors.info, fontWeight: '500', textDecorationLine: 'underline' },
+  descText: { ...typography.subhead, color: colors.textPrimary, lineHeight: 22 },
+  subLabel: { ...typography.footnote, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs },
+  bullet: { ...typography.subhead, color: colors.textPrimary, lineHeight: 24 },
+  noneText: { ...typography.subhead, color: colors.textTertiary, fontStyle: 'italic' },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
+  photoStrip: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+  photo: { width: 100, height: 100, borderRadius: radius.md, backgroundColor: colors.shimmer },
+  emptyLog: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
+  emptyLogText: { ...typography.subhead, color: colors.textTertiary },
+  logEntry: { flexDirection: 'row', padding: spacing.lg },
+  logDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent, marginTop: 5, marginRight: spacing.md },
+  logContent: { flex: 1 },
+  logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logActor: { ...typography.subhead, fontWeight: '600', color: colors.textPrimary, flex: 1 },
+  logTime: { ...typography.caption2, color: colors.textTertiary, marginLeft: spacing.sm },
+  logStatus: { ...typography.footnote, fontWeight: '600', marginTop: 2 },
+  logNote: { ...typography.footnote, color: colors.textSecondary, marginTop: 2, lineHeight: 18 },
   bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#ddd',
+    flexDirection: 'row', padding: spacing.lg, paddingBottom: spacing.md,
+    backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: spacing.md,
   },
-  editButton: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginRight: 8,
+  editBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.headerBg, paddingVertical: spacing.md, borderRadius: radius.md, gap: spacing.sm,
   },
-  aiButton: {
-    flex: 1,
-    backgroundColor: '#FFD700',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginLeft: 8,
+  aiBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.accent, paddingVertical: spacing.md, borderRadius: radius.md, gap: spacing.sm,
   },
-  buttonTextWhite: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  bottomBtnText: { ...typography.callout, fontWeight: '600', color: colors.textInverse },
+  imageOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  imageClose: {
+    position: 'absolute', top: 40, right: 20, zIndex: 1,
+    padding: spacing.sm, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: radius.full,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-  },
-  fullScreenImage: {
-    width: '100%',
-    height: '80%',
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    zIndex: 1,
-    padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-  },
-  closeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  }
+  fullImage: { width: '100%', height: '80%' },
 });

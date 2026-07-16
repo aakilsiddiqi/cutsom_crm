@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator,
-  Platform, KeyboardAvoidingView, ScrollView, TouchableWithoutFeedback, Keyboard, StyleSheet
+  Platform, KeyboardAvoidingView, ScrollView, TouchableWithoutFeedback, Keyboard, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
@@ -13,6 +13,8 @@ import { navigateBack } from '../../utils/navigationUtils';
 import { STANDARD_MODELS } from '../../utils/constants';
 import { useJobSheetForm } from '../../hooks/useJobSheetForm';
 import { JobSheetFormFields, PhotoManager } from '../../components/JobSheetFormFields';
+import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { Icon } from '../../components/ui/Icon';
 
 type EditRouteProp = RouteProp<RootStackParamList, 'EditJobSheet'>;
 
@@ -22,7 +24,6 @@ export const EditJobSheetScreen = () => {
   const { jobSheetId } = route.params;
   const { profile } = useAuth();
   const form = useJobSheetForm();
-
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [originalJobSheet, setOriginalJobSheet] = useState<JobSheet | null>(null);
@@ -48,12 +49,8 @@ export const EditJobSheetScreen = () => {
       form.setEntryDateTime(new Date(job.entry_date_time));
       const model = job.machine_model || '3DX';
       if (!STANDARD_MODELS.includes(model)) {
-        form.setIsCustomModel(true);
-        form.setSelectedModel('Other');
-        form.setCustomModelText(model);
-      } else {
-        form.setSelectedModel(model);
-      }
+        form.setIsCustomModel(true); form.setSelectedModel('Other'); form.setCustomModelText(model);
+      } else form.setSelectedModel(model);
       form.setServiceLocation(job.service_location || 'Workshop');
       form.setPriority(job.priority || 'Normal');
       form.setIssuesDescription(job.issues_description || '');
@@ -62,24 +59,19 @@ export const EditJobSheetScreen = () => {
       form.setPartsNeeded(job.parts_needed || []);
       form.setPartsUsed(job.parts_used || []);
       setExistingPhotos(job.photos || []);
-    } catch {
-      Alert.alert('Error', 'Could not load job.');
-      navigateBack(navigation);
-    } finally {
-      setInitialLoading(false);
-    }
+    } catch { Alert.alert('Error', 'Could not load job.'); navigateBack(navigation); }
+    finally { setInitialLoading(false); }
   };
 
   const handleSave = async () => {
     if (!form.registrationNumber.trim() || !form.customerName.trim() || !form.customerMobile.trim())
       return Alert.alert('Validation', 'Registration, Name, Mobile required.');
-
     setSaving(true);
     try {
       if (!profile) throw new Error('Not authenticated');
       const urls = await form.uploadPhotos(newPhotos);
       const finalPhotos = [...existingPhotos, ...urls];
-      const updatePayload: Record<string, unknown> = {
+      const payload: Record<string, unknown> = {
         registration_number: form.registrationNumber.trim().toUpperCase(),
         customer_name: form.customerName.trim(),
         customer_mobile: form.customerMobile.trim(),
@@ -94,48 +86,30 @@ export const EditJobSheetScreen = () => {
         parts_used: form.partsUsed,
         photos: finalPhotos,
       };
-
       let statusChangedTo: string | null = null;
       if (originalJobSheet && originalJobSheet.status !== form.status) {
         statusChangedTo = form.status;
         if (form.status === 'Completed') {
-          const now = Date.now();
-          const tatHours = Number(((now - new Date(form.entryDateTime).getTime()) / (1000 * 60 * 60)).toFixed(1));
-          updatePayload.completed_at = new Date().toISOString();
-          updatePayload.tat_hours = tatHours;
-        } else {
-          updatePayload.completed_at = null;
-          updatePayload.tat_hours = null;
-        }
+          const tatHours = Number(((Date.now() - new Date(form.entryDateTime).getTime()) / (1000 * 60 * 60)).toFixed(1));
+          payload.completed_at = new Date().toISOString();
+          payload.tat_hours = tatHours;
+        } else { payload.completed_at = null; payload.tat_hours = null; }
       }
-
-      const { error: updateError } = await supabase.from('job_sheets').update(updatePayload).eq('id', jobSheetId);
-      if (updateError) throw updateError;
-
-      const { error: logError } = await supabase.from('job_updates').insert({
+      await supabase.from('job_sheets').update(payload).eq('id', jobSheetId);
+      await supabase.from('job_updates').insert({
         job_sheet_id: jobSheetId, updated_by: profile.id,
         update_note: updateNote.trim() || null, status_changed_to: statusChangedTo,
       });
-      if (logError) throw logError;
-
-      if (Platform.OS === 'web') {
-        window.alert('Updated.');
-        navigateBack(navigation);
-      } else {
-        Alert.alert('Updated', 'Job sheet updated.', [{ text: 'OK', onPress: () => navigateBack(navigation) }]);
-      }
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed.');
-    } finally {
-      setSaving(false);
-    }
+      Platform.OS === 'web' ? (window.alert('Updated.'), navigateBack(navigation)) : Alert.alert('Updated', 'Job sheet updated.', [{ text: 'OK', onPress: () => navigateBack(navigation) }]);
+    } catch (error) { Alert.alert('Error', error instanceof Error ? error.message : 'Failed.'); }
+    finally { setSaving(false); }
   };
 
   if (initialLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1a1a2e" />
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.center}><ActivityIndicator size="large" color={colors.accent} /></View>
+      </SafeAreaView>
     );
   }
 
@@ -151,9 +125,9 @@ export const EditJobSheetScreen = () => {
   };
 
   const extraSection = (
-    <View style={styles.statusUpdateBox}>
-      <Text style={styles.updateTitle}>Update Status</Text>
-      <View style={styles.sPickerContainer}>
+    <View style={styles.statusBox}>
+      <Text style={styles.statusBoxTitle} allowFontScaling={false}>Update Status</Text>
+      <View style={styles.pickerWrap}>
         <Picker selectedValue={form.status} onValueChange={(v) => form.setStatus(v as JobSheetStatus)}>
           <Picker.Item label="In Queue" value="In Queue" />
           <Picker.Item label="In Progress" value="In Progress" />
@@ -161,8 +135,16 @@ export const EditJobSheetScreen = () => {
           <Picker.Item label="On Hold" value="On Hold" />
         </Picker>
       </View>
-      <Text style={[styles.label, { marginTop: 16 }]}>Update Note (Activity Log)</Text>
-      <TextInput style={[styles.input, { height: 80, textAlignVertical: 'top' }]} placeholder="E.g., Waiting for spare parts..." value={updateNote} onChangeText={setUpdateNote} multiline />
+      <Text style={styles.noteLabel} allowFontScaling={false}>Update Note (Activity Log)</Text>
+      <TextInput
+        style={styles.noteInput}
+        placeholder="E.g., Waiting for spare parts..."
+        placeholderTextColor={colors.textTertiary}
+        value={updateNote}
+        onChangeText={setUpdateNote}
+        multiline
+        textAlignVertical="top"
+      />
     </View>
   );
 
@@ -225,34 +207,40 @@ export const EditJobSheetScreen = () => {
       photos={photoManager}
       extraSection={extraSection}
       renderSubmit={() => (
-        <TouchableOpacity style={[styles.submitButton, saving && styles.disabledButton]} onPress={handleSave} disabled={saving}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Save Changes</Text>}
+        <TouchableOpacity style={[styles.submit, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving} activeOpacity={0.8}>
+          {saving ? <ActivityIndicator color={colors.accent} /> : (
+            <View style={styles.submitContent}>
+              <Icon name="checkmark-circle-outline" size={20} color={colors.accent} />
+              <Text style={styles.submitText} allowFontScaling={false}>Save Changes</Text>
+            </View>
+          )}
         </TouchableOpacity>
       )}
     />
   );
 
   return (
-    <SafeAreaView style={stylesSafe.safeArea} edges={['top', 'left', 'right']}>
-      {Platform.OS === 'web' ? content : (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>{content}</TouchableWithoutFeedback>
-      )}
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {Platform.OS === 'web' ? content : <TouchableWithoutFeedback onPress={Keyboard.dismiss}>{content}</TouchableWithoutFeedback>}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  submitButton: { backgroundColor: '#1a1a2e', padding: 16, borderRadius: 8, alignItems: 'center' },
-  disabledButton: { opacity: 0.7 },
-  submitButtonText: { color: '#FFD700', fontWeight: 'bold', fontSize: 18 },
-  statusUpdateBox: { backgroundColor: '#fff', padding: 16, borderRadius: 8, marginTop: 10, marginBottom: 20, borderWidth: 1, borderColor: '#ddd' },
-  updateTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 10 },
-  label: { fontSize: 14, fontWeight: '600', color: '#555', marginBottom: 8 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
-  sPickerContainer: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, overflow: 'hidden' },
-});
-
-const stylesSafe = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1a1a2e' },
+  safeArea: { flex: 1, backgroundColor: colors.headerBg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  submit: { backgroundColor: colors.headerBg, padding: spacing.lg, borderRadius: radius.md, alignItems: 'center' },
+  submitContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  submitText: { ...typography.headline, fontWeight: '700', color: colors.accent },
+  statusBox: {
+    backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.lg,
+    marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.border,
+  },
+  statusBoxTitle: { ...typography.callout, fontWeight: '600', color: colors.textPrimary, marginBottom: spacing.md },
+  pickerWrap: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden', marginBottom: spacing.lg },
+  noteLabel: { ...typography.footnote, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.sm },
+  noteInput: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    padding: spacing.md, minHeight: 80, ...typography.body, color: colors.textPrimary,
+  },
 });
