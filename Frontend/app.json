@@ -4,11 +4,11 @@
     "slug": "jcb-workshop-crm",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/MS_JCB_LOGO.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/MS_JCB_LOGO.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,24 +17,35 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/MS_JCB_LOGO.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.siddiqiaakil.jcbworkshopcrm"
+      "package": "com.siddiqiaakil.jcbworkshopcrm",
+      "jsEngine": "hermes"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/MS_JCB_LOGO.png",
       "bundler": "metro"
     },
     "platforms": [
-      "ios",
       "android",
       "web"
     ],
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "compileSdkVersion": 34,
+            "extraProguardRules": "-keep class com.siddiqiaakil.jcbworkshopcrm.** { *; }"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
