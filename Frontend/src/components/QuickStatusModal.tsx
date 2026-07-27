@@ -4,6 +4,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback,
   Keyboard, Alert,
 } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { JobSheet } from '../types';
 import { colors, spacing, radius, typography } from '../theme/tokens';
@@ -26,6 +27,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: React.Comp
 export const QuickStatusModal: React.FC<QuickStatusModalProps> = memo(({
   visible, jobSheet, onClose, onStatusUpdate,
 }) => {
+  const { profile: currentUser } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState('');
   const [noteText, setNoteText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,10 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = memo(({
 
   const handleUpdate = async () => {
     if (!jobSheet || !selectedStatus) return;
+    if (selectedStatus === jobSheet.status) {
+      Alert.alert('Info', `Sheet already in '${selectedStatus}' status.`);
+      return;
+    }
     const exec = async () => {
       setLoading(true);
       try {
@@ -58,9 +64,11 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = memo(({
           payload.completed_at = new Date().toISOString();
           payload.tat_hours = Number(((new Date().getTime() - new Date(jobSheet.entry_date_time).getTime()) / (1000 * 60 * 60)).toFixed(1));
         }
-        await supabase.from('job_sheets').update(payload).eq('id', jobSheet.id);
+        const { error: updateError } = await supabase.from('job_sheets').update(payload).eq('id', jobSheet.id);
+        if (updateError) throw updateError;
         await supabase.from('job_updates').insert({
           job_sheet_id: jobSheet.id,
+          updated_by: currentUser?.id,
           update_note: noteText.trim() || `Status updated to ${selectedStatus}`,
           status_changed_to: selectedStatus,
         });
@@ -70,10 +78,13 @@ export const QuickStatusModal: React.FC<QuickStatusModalProps> = memo(({
       finally { setLoading(false); }
     };
     if (selectedStatus === 'Completed') {
-      Alert.alert('Confirm', 'Mark job done and calculate TAT?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', onPress: exec },
-      ]);
+      const doConfirm = () => exec();
+      Platform.OS === 'web'
+        ? (window.confirm('Mark job done and calculate TAT?') && doConfirm())
+        : Alert.alert('Confirm', 'Mark job done and calculate TAT?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Continue', onPress: doConfirm },
+          ]);
     } else exec();
   };
 
