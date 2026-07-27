@@ -58,10 +58,10 @@ export const navigateToJobDetail = (navigation: Navigation, role: 'admin' | 'use
   }
 };
 
-export const navigateBack = (navigation: Navigation) => {
+export const navigateBack = (navigation: Navigation, fallbackRoute?: string) => {
   if (navigation.canGoBack()) {
     navigation.goBack();
-  } else {
-    navigation.dispatch(CommonActions.goBack());
+  } else if (fallbackRoute) {
+    navigation.navigate(fallbackRoute);
   }
 };

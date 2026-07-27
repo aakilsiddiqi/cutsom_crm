@@ -183,10 +183,13 @@ export const JobDetailAdminScreen = () => {
       }
     };
     if (newStatus === 'Completed') {
-      Alert.alert('Confirm', 'This will mark job done and calculate TAT. Continue?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', onPress: exec },
-      ]);
+      const doConfirm = () => exec();
+      Platform.OS === 'web'
+        ? (window.confirm('This will mark job done and calculate TAT. Continue?') && doConfirm())
+        : Alert.alert('Confirm', 'This will mark job done and calculate TAT. Continue?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Continue', onPress: doConfirm },
+          ]);
     } else {
       exec();
     }
@@ -274,7 +277,7 @@ Technician: ${jobSheet.assignee?.full_name || jobSheet.assignee?.username || 'Un
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigateBack(navigation)}
+          onPress={() => navigateBack(navigation, 'AdminTabs')}
           style={styles.backBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

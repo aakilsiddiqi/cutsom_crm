@@ -86,7 +86,7 @@ export const JobSheetDetailScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
-      <HeaderBar title="Job Details" onBack={() => navigateBack(navigation)} />
+      <HeaderBar title="Job Details" onBack={() => navigateBack(navigation, 'UserDashboard')} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Card>
           <Text style={styles.reg} allowFontScaling={false}>{jobSheet.registration_number}</Text>
