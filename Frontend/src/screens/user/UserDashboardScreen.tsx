@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, TextInput,
-  ActivityIndicator, RefreshControl, Alert, StatusBar,
+  ActivityIndicator, RefreshControl, Alert, StatusBar, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -63,10 +63,14 @@ export const UserDashboardScreen = () => {
   const onRefresh = () => { setRefreshing(true); fetchData(new AbortController().signal); };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: signOut },
-    ]);
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to logout?')) signOut();
+    } else {
+      Alert.alert('Logout', 'Sure you want to logout?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: signOut },
+      ]);
+    }
   };
 
   const handleStatusUpdate = (jobSheetId: string, newStatus: string) => {
@@ -95,21 +99,21 @@ export const UserDashboardScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
-      <View style={styles.body}>
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting} allowFontScaling={false}>{greeting}, {userProfile?.full_name || userProfile?.username || 'Tech'}!</Text>
-            <Text style={styles.date} allowFontScaling={false}>{todayDate}</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.headerBtn} hitSlop={8}>
-              <Icon name="settings-outline" size={22} color={colors.headerText} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.headerBtn} hitSlop={8}>
-              <Icon name="log-out-outline" size={22} color={colors.headerText} />
-            </TouchableOpacity>
-          </View>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting} allowFontScaling={false}>{greeting}, {userProfile?.full_name || userProfile?.username || 'Tech'}!</Text>
+          <Text style={styles.date} allowFontScaling={false}>{todayDate}</Text>
         </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.iconBtn} hitSlop={8}>
+            <Icon name="settings-outline" size={22} color={colors.headerText} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn} hitSlop={8}>
+            <Icon name="log-out-outline" size={22} color={colors.headerText} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.body}>
 
         <View style={styles.summaryRow}>
           <Card>
@@ -205,12 +209,12 @@ export const UserDashboardScreen = () => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.headerBg },
-  body: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.xl },
-  greeting: { ...typography.title2, color: colors.textPrimary },
-  date: { ...typography.footnote, color: colors.textSecondary, marginTop: 2 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: spacing.lg, paddingBottom: spacing.xl, backgroundColor: colors.headerBg },
+  greeting: { ...typography.title2, color: colors.headerText },
+  date: { ...typography.footnote, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
   headerActions: { flexDirection: 'row', gap: spacing.sm, marginTop: 4 },
-  headerBtn: { padding: spacing.sm },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  body: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg },
   summaryRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
   summaryContent: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.sm },
   summaryValue: { ...typography.title1, fontWeight: '700' },

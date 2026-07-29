@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { View, AppState, Platform } from 'react-native';
 import { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../services/supabase';
 import { UserProfile } from '../types';
 import { SessionWarningModal } from '../components/SessionWarningModal';
@@ -94,6 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setSession(null);
     setProfile(null);
+    try { await AsyncStorage.removeItem('app_navigation_state'); } catch {}
   }, [clearSessionTimer]);
 
   const fetchProfile = async (userId: string) => {

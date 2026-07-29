@@ -14,6 +14,12 @@ import { AddTechnicianScreen } from '../screens/admin/AddTechnicianScreen';
 import { SettingsScreen } from '../screens/shared/SettingsScreen';
 import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
 import { CreateJobSheetScreen } from '../screens/user/CreateJobSheetScreen';
+import { RevenueDashboardScreen } from '../screens/revenue/RevenueDashboardScreen';
+import { RevenueTransactionsScreen } from '../screens/revenue/RevenueTransactionsScreen';
+import { RevenueTransactionFormScreen } from '../screens/revenue/RevenueTransactionFormScreen';
+import { RevenueTransactionDetailScreen } from '../screens/revenue/RevenueTransactionDetailScreen';
+import { OutstandingCustomersScreen } from '../screens/revenue/OutstandingCustomersScreen';
+import { CustomerDetailScreen } from '../screens/revenue/CustomerDetailScreen';
 import { AdminStackParamList } from '../types';
 import { colors, radius, spacing } from '../theme/tokens';
 import { Icon } from '../components/ui/Icon';
@@ -115,5 +121,11 @@ export const AdminNavigator = () => (
     <Stack.Screen name="EditProfile" component={withErrorBoundary(EditProfileScreen)} />
     <Stack.Screen name="AddTechnician" component={withErrorBoundary(AddTechnicianScreen)} />
     <Stack.Screen name="CreateJobSheet" component={withErrorBoundary(CreateJobSheetScreen)} />
+    <Stack.Screen name="RevenueDashboard" component={withErrorBoundary(RevenueDashboardScreen)} />
+    <Stack.Screen name="RevenueTransactions" component={withErrorBoundary(RevenueTransactionsScreen)} />
+    <Stack.Screen name="RevenueTransactionForm" component={withErrorBoundary(RevenueTransactionFormScreen)} />
+    <Stack.Screen name="RevenueTransactionDetail" component={withErrorBoundary(RevenueTransactionDetailScreen)} />
+    <Stack.Screen name="OutstandingCustomers" component={withErrorBoundary(OutstandingCustomersScreen)} />
+    <Stack.Screen name="CustomerDetail" component={withErrorBoundary(CustomerDetailScreen)} />
   </Stack.Navigator>
 );

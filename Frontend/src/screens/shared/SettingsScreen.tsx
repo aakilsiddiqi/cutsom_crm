@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, StatusBar,
+  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, StatusBar, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -20,10 +20,14 @@ export const SettingsScreen = () => {
   const { profile, signOut } = useAuth();
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', style: 'destructive', onPress: signOut },
-    ]);
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to logout?')) signOut();
+    } else {
+      Alert.alert('Logout', 'Sure you want to logout?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: signOut },
+      ]);
+    }
   };
 
   const initial = (profile?.full_name || profile?.username || '?').charAt(0).toUpperCase();

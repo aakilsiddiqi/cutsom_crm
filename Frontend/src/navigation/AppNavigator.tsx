@@ -1,7 +1,8 @@
-import React from 'react';
-import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer, LinkingOptions, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { RootStackParamList } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -17,9 +18,22 @@ import { SettingsScreen } from '../screens/shared/SettingsScreen';
 import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const NAV_STATE_KEY = 'app_navigation_state';
 
 export const AppNavigator = () => {
   const { session, profile, loading } = useAuth();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const [initialState, setInitialState] = useState<any>(undefined);
+
+  useEffect(() => {
+    try {
+      const restore = async () => {
+        const saved = await AsyncStorage.getItem(NAV_STATE_KEY);
+        if (saved) setInitialState(JSON.parse(saved));
+      };
+      restore();
+    } catch {}
+  }, []);
 
   if (loading) {
     return (
@@ -48,7 +62,13 @@ export const AppNavigator = () => {
             Settings: 'admin/settings',
             EditProfile: 'admin/profile/edit',
             AddTechnician: 'admin/technician/add',
-            CreateJobSheet: 'admin/job/create'
+            CreateJobSheet: 'admin/job/create',
+            RevenueDashboard: 'admin/revenue',
+            RevenueTransactions: 'admin/revenue/transactions',
+            RevenueTransactionForm: 'admin/revenue/transaction/form',
+            RevenueTransactionDetail: 'admin/revenue/transaction/:transactionId',
+            OutstandingCustomers: 'admin/revenue/outstanding',
+            CustomerDetail: 'admin/revenue/customer/:customerId'
           }
         },
         UserDashboard: 'user/dashboard',
@@ -62,10 +82,18 @@ export const AppNavigator = () => {
   };
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      initialState={initialState}
+      onStateChange={(state) => {
+        try {
+          if (state) AsyncStorage.setItem(NAV_STATE_KEY, JSON.stringify(state));
+        } catch {}
+      }}
+    >
       <Stack.Navigator>
         {!session || !profile ? (
-          // Auth Stack
           <Stack.Screen name="Auth" component={withErrorBoundary(LoginScreen)} options={{ headerShown: false }} />
         ) : profile.role === 'admin' ? (
           <Stack.Screen name="AdminNavigator" component={AdminNavigator} options={{ headerShown: false }} />

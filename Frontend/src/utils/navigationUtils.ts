@@ -65,3 +65,24 @@ export const navigateBack = (navigation: Navigation, fallbackRoute?: string) => 
     navigation.navigate(fallbackRoute);
   }
 };
+
+export const goToAdminDashboard = (navigation: Navigation) => {
+  if (Platform.OS === 'web') {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{
+          name: 'AdminTabs',
+          state: { routes: [{ name: 'Dashboard' }], index: 0 },
+        }],
+      })
+    );
+  } else {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'AdminTabs' }],
+      })
+    );
+  }
+};
