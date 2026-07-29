@@ -240,3 +240,163 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 --       AND (public.is_admin() OR assigned_to = auth.uid() OR created_by = auth.uid())
 --     )
 --   );
+
+-- ==========================================
+-- 8. REVENUE TRANSACTIONS TABLE
+-- ==========================================
+CREATE TABLE public.revenue_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  parent_id UUID REFERENCES public.revenue_transactions(id) ON DELETE RESTRICT,
+  transaction_date TIMESTAMPTZ DEFAULT NOW(),
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN (
+    'Income','Expense','Amount Given','Amount Taken',
+    'Bills','Client Payment','Vendor Payment','Refund','Adjustment','Other'
+  )),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  payment_mode TEXT DEFAULT 'Cash' CHECK (payment_mode IN ('Cash','Bank Transfer','Cheque','UPI','Card','Other')),
+  category TEXT NOT NULL CHECK (category IN (
+    'Marketing','Salary','Infrastructure','Software','Hardware',
+    'Rent','Utilities','Sales','Miscellaneous','Other'
+  )),
+  description TEXT,
+  client_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  vendor_name TEXT,
+  invoice_number TEXT,
+  status TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN (
+    'Pending','Partially Paid','Paid','Cancelled','Refunded','Adjusted'
+  )),
+  total_amount NUMERIC(12,2) NOT NULL CHECK (total_amount > 0),
+  paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+  remaining_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (remaining_amount >= 0),
+  created_by UUID REFERENCES public.profiles(id) NOT NULL DEFAULT auth.uid(),
+  updated_by UUID REFERENCES public.profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+ALTER TABLE public.revenue_transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Revenue admin-only select"
+  ON public.revenue_transactions FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Revenue admin-only insert"
+  ON public.revenue_transactions FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+CREATE POLICY "Revenue admin-only update"
+  ON public.revenue_transactions FOR UPDATE TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Revenue admin-only delete"
+  ON public.revenue_transactions FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+CREATE TRIGGER update_revenue_transactions_modtime
+  BEFORE UPDATE ON public.revenue_transactions
+  FOR EACH ROW
+  EXECUTE PROCEDURE update_modified_column();
+
+-- ==========================================
+-- 9. REVENUE AUDIT LOG
+-- ==========================================
+CREATE TABLE public.revenue_audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  transaction_id UUID REFERENCES public.revenue_transactions(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN (
+    'create','update','payment','status_change','attachment','soft_delete','restore'
+  )),
+  old_data JSONB,
+  new_data JSONB,
+  changed_by UUID REFERENCES public.profiles(id) NOT NULL DEFAULT auth.uid(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.revenue_audit_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Audit log admin-only select"
+  ON public.revenue_audit_log FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Audit log admin-only insert"
+  ON public.revenue_audit_log FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+-- ==========================================
+-- 10. REVENUE INDEXES
+-- ==========================================
+CREATE INDEX IF NOT EXISTS idx_revenue_date ON public.revenue_transactions(transaction_date DESC);
+CREATE INDEX IF NOT EXISTS idx_revenue_type ON public.revenue_transactions(transaction_type);
+CREATE INDEX IF NOT EXISTS idx_revenue_category ON public.revenue_transactions(category);
+CREATE INDEX IF NOT EXISTS idx_revenue_status ON public.revenue_transactions(status);
+CREATE INDEX IF NOT EXISTS idx_revenue_client ON public.revenue_transactions(client_id);
+CREATE INDEX IF NOT EXISTS idx_revenue_parent ON public.revenue_transactions(parent_id);
+CREATE INDEX IF NOT EXISTS idx_revenue_audit_txn ON public.revenue_audit_log(transaction_id);
+
+-- ==========================================
+-- 11. CUSTOMERS TABLE (Customer Master)
+-- ==========================================
+CREATE TABLE public.customers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  name_normalized TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_name_normalized ON public.customers(LOWER(TRIM(name_normalized)));
+
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Customers admin-only select"
+  ON public.customers FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Customers admin-only insert"
+  ON public.customers FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+CREATE POLICY "Customers admin-only update"
+  ON public.customers FOR UPDATE TO authenticated
+  USING (public.is_admin());
+
+-- ==========================================
+-- 12. CUSTOMER LEDGER TABLE
+-- ==========================================
+CREATE TABLE public.customer_ledger (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE NOT NULL,
+  transaction_id UUID REFERENCES public.revenue_transactions(id) ON DELETE CASCADE,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('invoice','payment','adjustment','refund','other')),
+  direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+  amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  running_balance NUMERIC(12,2) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.customer_ledger ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Customer ledger admin-only select"
+  ON public.customer_ledger FOR SELECT TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "Customer ledger admin-only insert"
+  ON public.customer_ledger FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+CREATE INDEX IF NOT EXISTS idx_customer_ledger_customer ON public.customer_ledger(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_ledger_created ON public.customer_ledger(customer_id, created_at DESC);
+
+-- ==========================================
+-- 13. REVENUE TRANSACTIONS ADDITIONS
+-- ==========================================
+ALTER TABLE public.revenue_transactions
+  ADD COLUMN IF NOT EXISTS customer_name TEXT,
+  ADD COLUMN IF NOT EXISTS service_sheet_number TEXT,
+  ADD COLUMN IF NOT EXISTS custom_transaction_type TEXT,
+  ADD COLUMN IF NOT EXISTS custom_category TEXT,
+  ADD COLUMN IF NOT EXISTS custom_payment_mode TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_revenue_customer_name ON public.revenue_transactions(customer_name);
+CREATE INDEX IF NOT EXISTS idx_revenue_sheet_number ON public.revenue_transactions(service_sheet_number);

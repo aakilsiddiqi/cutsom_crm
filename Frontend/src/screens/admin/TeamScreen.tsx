@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
   RefreshControl, Linking, Switch, Alert, Modal, StatusBar, Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,9 @@ import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
+import { supabaseAdmin } from '../../services/supabaseAdmin';
 import { UserProfile, AdminStackParamList } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { colors, spacing, radius, typography } from '../../theme/tokens';
 import { Icon } from '../../components/ui/Icon';
 
@@ -21,6 +23,7 @@ type TeamMemberStats = UserProfile & {
 
 export const TeamScreen = () => {
   const navigation = useNavigation<NavigationProp>();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorOccurred, setErrorOccurred] = useState(false);
@@ -30,6 +33,10 @@ export const TeamScreen = () => {
   const [activeJobsToReassign, setActiveJobsToReassign] = useState<any[]>([]);
   const [availableTechs, setAvailableTechs] = useState<UserProfile[]>([]);
   const [reassignToTechId, setReassignToTechId] = useState('');
+  const [resetPwdModalVisible, setResetPwdModalVisible] = useState(false);
+  const [resetPwdTarget, setResetPwdTarget] = useState<{ id: string; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPwd, setResettingPwd] = useState(false);
 
   const cacheTs = useRef(0);
   const CACHE_TTL = 30_000;
@@ -112,6 +119,31 @@ export const TeamScreen = () => {
     ]);
   };
 
+  const handleResetPassword = async () => {
+    if (!resetPwdTarget || !newPassword || newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters.');
+      return;
+    }
+    setResettingPwd(true);
+    try {
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(resetPwdTarget.id, { password: newPassword });
+      if (error) throw error;
+      await supabase.from('revenue_audit_log').insert({
+        action: 'password_reset',
+        new_data: { user_id: resetPwdTarget.id, user_name: resetPwdTarget.name },
+        changed_by: profile?.id,
+      });
+      Alert.alert('Success', `Password reset for ${resetPwdTarget.name}.`);
+      setResetPwdModalVisible(false);
+      setNewPassword('');
+      setResetPwdTarget(null);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to reset password.');
+    } finally {
+      setResettingPwd(false);
+    }
+  };
+
   const handleRemovePress = async (techId: string, name: string) => {
     try {
       const { data: activeJobs } = await supabase
@@ -190,10 +222,23 @@ export const TeamScreen = () => {
         </View>
       </View>
 
-      <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemovePress(item.id, item.full_name || item.username)}>
-        <Icon name="trash-outline" size={14} color={colors.error} />
-        <Text style={styles.removeText} allowFontScaling={false}>Remove</Text>
-      </TouchableOpacity>
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => {
+            setResetPwdTarget({ id: item.id, name: item.full_name || item.username });
+            setNewPassword('');
+            setResetPwdModalVisible(true);
+          }}
+        >
+          <Icon name="key-outline" size={14} color={colors.info} />
+          <Text style={[styles.actionText, { color: colors.info }]} allowFontScaling={false}>Reset Password</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => handleRemovePress(item.id, item.full_name || item.username)}>
+          <Icon name="trash-outline" size={14} color={colors.error} />
+          <Text style={[styles.actionText, { color: colors.error }]} allowFontScaling={false}>Remove</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -237,6 +282,44 @@ export const TeamScreen = () => {
           <Icon name="add" size={28} color="#000" />
         </TouchableOpacity>
       </Animated.View>
+
+      <Modal visible={resetPwdModalVisible} transparent animationType="slide" onRequestClose={() => setResetPwdModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle} allowFontScaling={false}>Reset Password</Text>
+            <Text style={styles.sheetSubtitle} allowFontScaling={false}>
+              New password for {resetPwdTarget?.name}
+            </Text>
+            <TextInput
+              style={styles.pwdInput}
+              placeholder="Enter new password"
+              placeholderTextColor={colors.textTertiary}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <Text style={styles.pwdHint} allowFontScaling={false}>Minimum 6 characters</Text>
+            <View style={styles.sheetActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setResetPwdModalVisible(false)}>
+                <Text style={styles.cancelBtnText} allowFontScaling={false}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reassignBtn, { backgroundColor: colors.info }]}
+                onPress={handleResetPassword}
+                disabled={resettingPwd || newPassword.length < 6}
+              >
+                {resettingPwd ? (
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                ) : (
+                  <Text style={styles.reassignBtnText} allowFontScaling={false}>Reset</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={reassignModalVisible} transparent animationType="slide" onRequestClose={() => setReassignModalVisible(false)}>
         <View style={styles.overlay}>
@@ -322,10 +405,18 @@ const styles = StyleSheet.create({
   statGreen: { backgroundColor: colors.statusCompletedBg },
   statValue: { fontSize: 16, fontWeight: '700', color: colors.statusProgress },
   statLabel: { fontSize: 12, fontWeight: '600', color: colors.statusProgress },
-  removeBtn: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 4, padding: spacing.xs,
+  cardActions: {
+    flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border,
   },
-  removeText: { fontSize: 13, color: colors.error, fontWeight: '600' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
+  actionText: { fontSize: 12, fontWeight: '600' },
+  pwdInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bg,
+    marginBottom: spacing.xs,
+  },
+  pwdHint: { fontSize: 12, color: colors.textSecondary, marginBottom: spacing.xl },
   errorText: { fontSize: 15, color: colors.textSecondary, textAlign: 'center' },
   emptyText: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
   fab: {

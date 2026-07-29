@@ -329,7 +329,25 @@ export const AdminDashboardScreen = () => {
           </View>
         </View>
 
-        {/* Quick Stats Row */}
+            {/* Revenue Quick Entry */}
+            <TouchableOpacity
+              style={styles.revenueQuickEntry}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('RevenueDashboard')}
+            >
+              <View style={styles.revenueQuickEntryContent}>
+                <View style={[styles.kpiIconWrap, { backgroundColor: '#EEF2FF' }]}>
+                  <Icon name="cash-outline" size={22} color="#6366F1" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.revenueQuickEntryTitle} allowFontScaling={false}>Revenue Management</Text>
+                  <Text style={styles.revenueQuickEntrySub} allowFontScaling={false}>Track income, expenses & reports</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} color={colors.textTertiary} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Quick Stats Row */}
         <View style={styles.quickStats}>
           <View style={styles.quickStatItem}>
             <Text style={styles.quickStatValue} allowFontScaling={false}>{metrics.completed}</Text>
@@ -806,4 +824,33 @@ const styles = StyleSheet.create({
   logLineText: { fontSize: 14, color: colors.textPrimary, lineHeight: 20 },
   logBold: { fontWeight: '700' },
   logLineTime: { fontSize: 12, color: colors.textTertiary },
+  // Revenue Quick Entry
+  revenueQuickEntry: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  revenueQuickEntryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  revenueQuickEntryTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  revenueQuickEntrySub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
 });

@@ -55,9 +55,9 @@ const AdminTabNavigator = () => {
         state: (e) => {
           if (Platform.OS !== 'web') return;
           try {
-            const routes = (e.data as any)?.state?.routes;
-            if (routes) {
-              const current = routes[routes.length - 1]?.name;
+            const { index, routes } = (e.data as any)?.state || {};
+            if (routes && typeof index === 'number' && routes[index]) {
+              const current = routes[index].name;
               if (current && TAB_ORDER.includes(current as any)) {
                 sessionStorage.setItem('adminTab', current);
               }

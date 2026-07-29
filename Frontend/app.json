@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.siddiqiaakil.jcbworkshopcrm",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +27,8 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.siddiqiaakil.jcbworkshopcrm",
-      "jsEngine": "hermes"
+      "jsEngine": "hermes",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/MS_JCB_LOGO.png",
@@ -41,8 +46,9 @@
           "android": {
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "compileSdkVersion": 34,
-            "extraProguardRules": "-keep class com.siddiqiaakil.jcbworkshopcrm.** { *; }"
+            "compileSdkVersion": 35,
+            "extraProguardRules": "-keep class com.siddiqiaakil.jcbworkshopcrm.** { *; }",
+            "enableMinifyInReleaseBuilds": true
           }
         }
       ]

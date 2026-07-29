@@ -6,7 +6,7 @@
 
 **Business domain:** Heavy equipment (JCB backhoe loaders) repair workshop management. Machines are identified by registration numbers; jobs flow through statuses (In Queue → In Progress → Completed/On Hold).
 
-**Current state:** Production-ready MVP. Core CRUD, auth, role-based access, photo upload, CSV export, and billing generation all work. No tests, no CI/CD.
+**Current state:** Production-ready MVP. Core CRUD, auth, role-based access, photo upload, CSV export, billing generation all work. Revenue management (income/expense tracking, customer ledger, outstanding tracking) in active development. No tests, no CI/CD.
 
 ---
 
@@ -44,6 +44,7 @@ cutsom_crm/
 │   │   ├── screens/
 │   │   │   ├── auth/           # LoginScreen
 │   │   │   ├── admin/          # Dashboard, AllJobs, Team, Reports, JobDetail, AddTech
+│   │   │   ├── revenue/        # Dashboard, Transactions, TransactionForm, TransactionDetail, OutstandingCustomers, CustomerDetail
 │   │   │   ├── user/           # Dashboard, CreateJob, JobDetail, EditJob
 │   │   │   └── shared/         # Settings, EditProfile
 │   │   ├── services/           # supabase.ts (client), supabaseAdmin.ts (admin client)
@@ -66,9 +67,10 @@ cutsom_crm/
 | `navigation/` | Navigation config | `AppNavigator.tsx`, `AdminNavigator.tsx` |
 | `screens/auth/` | Authentication | `LoginScreen.tsx` |
 | `screens/admin/` | Admin-only screens | 6 files (Dashboard, AllJobs, Team, Reports, JobDetail, AddTech) |
+| `screens/revenue/` | Revenue management | 6 files (Dashboard, Transactions, TransactionForm, TransactionDetail, OutstandingCustomers, CustomerDetail) |
 | `screens/user/` | Technician screens | 4 files (Dashboard, Create, Detail, Edit) |
 | `screens/shared/` | Both roles | `SettingsScreen.tsx`, `EditProfileScreen.tsx` |
-| `services/` | Supabase clients + helpers | `supabase.ts`, `supabaseAdmin.ts` |
+| `services/` | Supabase clients + helpers | `supabase.ts`, `supabaseAdmin.ts`, `revenue.ts`, `customer.ts` |
 | `types/` | TypeScript types | `index.ts` |
 | `utils/` | Helpers | `greetingUtils.ts`, `navigationUtils.ts` |
 
@@ -95,6 +97,15 @@ cutsom_crm/
 2. Uploaded to Supabase Storage `machine_photos` bucket as `jobs/{timestamp}_{index}.jpg`
 3. Public URL stored in `job_sheets.photos[]` array
 
+### Revenue Management Flow (In Development)
+1. **Income/Expense Entry**: RevenueTransactionFormScreen → inserts to `revenue_transactions` with type (`Income`/`Expense`), category, amount, status
+2. **Payment Splitting**: Parent-child model — one bill entry can have multiple child payment records via `recordPayment()`
+3. **Soft Delete**: `softDeleteTransaction()` sets `deleted_at` timestamp + recalculates parent `paid_amount`/`remaining_amount`/`status` + reverses customer ledger
+4. **Restore**: `restoreTransaction()` clears `deleted_at` + recalculates parent + restores customer ledger
+5. **Customer Ledger**: Every invoice/payment/adjustment creates a `customer_ledger` entry with running balance, direction (debit/credit)
+6. **Outstanding Tracking**: `getOutstandingCustomers()` aggregates all customers with non-zero outstanding; dashboard shows total receivables/payables
+7. **Dashboard Summary**: `fetchSummary()` computes income/expense/profit/outstanding over date range + all-time outstanding (separate unfiltered query)
+
 ---
 
 ## 6. Component Hierarchy
@@ -115,6 +126,9 @@ App
             │   ├── AddTechnicianScreen
             │   ├── CreateJobSheetScreen
             │   ├── SettingsScreen → EditProfileScreen
+            │   ├── RevenueDashboardScreen (→ RevenueTransactionsScreen, OutstandingCustomersScreen)
+            │   ├── RevenueTransactionsScreen (→ RevenueTransactionFormScreen → RevenueTransactionDetailScreen)
+            │   ├── OutstandingCustomersScreen (→ CustomerDetailScreen)
             │   └── (shared screens)
             └── [user] → UserDashboardScreen
                 ├── JobSheetDetailScreen → EditJobSheetScreen
@@ -166,6 +180,9 @@ App
 | `profiles` | SELECT, INSERT, UPDATE |
 | `job_sheets` | SELECT, INSERT, UPDATE, DELETE |
 | `job_updates` | SELECT, INSERT |
+| `revenue_transactions` | SELECT, INSERT, UPDATE, DELETE (soft) |
+| `customers` | SELECT, INSERT (find-or-create) |
+| `customer_ledger` | SELECT, INSERT (running balance calc) |
 
 ---
 
@@ -223,6 +240,7 @@ App
 7. **Cross-platform** — Works on Android, iOS, and Web with platform-specific code paths
 8. **CSV export** — Three export types (Job Summary, Parts, Team Performance) with proper BOM encoding
 9. **Quick status updates** — Modal allows fast status changes from list views
+10. **Revenue management** — Income/expense tracking, parent-child payments, customer ledger with running balance, soft delete/restore, outstanding dashboard
 
 ---
 
@@ -238,6 +256,7 @@ App
 8. **No pagination for team/dashboard** — Only AllJobsScreen has pagination
 9. **Web alerts** — Uses `window.alert()` for confirmations on web (inconsistent UX)
 10. **No form validation library** — Manual validation scattered across screens
+11. **Revenue module WIP** — Form state cache (`formCache`) is module-level (not reset on unmount); no pagination on transactions list yet
 
 ---
 
@@ -247,7 +266,7 @@ App
 |------|----------|--------|
 | `supabaseAdmin` client in frontend | `supabaseAdmin.ts` | Security: service key exposed to client |
 | `console.log` statements throughout | `AuthContext.tsx`, screens | Performance, information leak |
-| `any` types | `AdminDashboardScreen:56`, `AllJobsScreen:29`, `ReportsScreen:38-39`, `TeamScreen` | Type safety erosion |
+| `any` types | `AdminDashboardScreen:56`, `AllJobsScreen:29`, `ReportsScreen:38-39`, `TeamScreen`, revenue screens | Type safety erosion |
 | Duplicated status color logic | 5+ files | Maintenance burden |
 | Duplicated form code (Create/Edit JobSheet) | `CreateJobSheetScreen.tsx`, `EditJobSheetScreen.tsx` | ~600 lines duplicated |
 | Inline styles mixed with StyleSheet | Multiple screens | Inconsistent styling |
@@ -313,7 +332,12 @@ App
 - ✅ EAS Build configured for Android (APK + AAB)
 - ✅ Deep linking configured
 - ✅ Web platform support with platform-specific code paths
+- ✅ Navigation state persisted to AsyncStorage (survives process kill / background-foreground)
+- ✅ Error boundary wrapper on all screens (`withErrorBoundary`)
+- ✅ Revenue module: CRUD on transactions, customer ledger, parent-child payments, soft delete/restore, outstanding tracking, dashboard summary (income/expense/profit)
+- ✅ TypeScript strict: 0 compiler errors
 - ❌ No tests found
 - ❌ No CI/CD configuration
 - ❌ `schema.sql` missing columns used in code (`is_active`, `serial_number`, `service_location`, `priority`)
 - ❌ `job_updates_with_profile` view not defined in schema
+- ❌ `schema.sql` missing sections 11-13 (customers, customer_ledger, revenue_transactions ALTER) — must be deployed separately

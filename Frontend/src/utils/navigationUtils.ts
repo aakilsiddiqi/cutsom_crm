@@ -62,7 +62,15 @@ export const navigateBack = (navigation: Navigation, fallbackRoute?: string) => 
   if (navigation.canGoBack()) {
     navigation.goBack();
   } else if (fallbackRoute) {
-    navigation.navigate(fallbackRoute);
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{
+          name: fallbackRoute,
+          state: { routes: [{ name: 'Dashboard' }], index: 0 },
+        }]
+      })
+    );
   }
 };
 
